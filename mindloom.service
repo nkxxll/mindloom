@@ -1,0 +1,21 @@
+[Unit]
+Description=Mindloom Server
+After=network.target
+
+[Service]
+Type=simple
+User=mindloom
+Group=mindloom
+WorkingDirectory=/opt/mindloom
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+ExecStart=uv run python packages/server/main.py
+Restart=on-failure
+RestartSec=5
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mindloom
+
+[Install]
+WantedBy=multi-user.target

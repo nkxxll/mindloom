@@ -1,0 +1,21 @@
+[project]
+name = "mindloom-server"
+version = "0.1.0"
+description = "Mindloom server component"
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi[standard]>=0.135.1",
+    "ollama>=0.6.1",
+    "sqlalchemy>=2.0.48",
+    "mindloom-core",
+]
+
+[tool.uv.sources]
+mindloom-core = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mindloom"]

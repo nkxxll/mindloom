@@ -1,0 +1,20 @@
+[project]
+name = "mindloom-cli"
+version = "0.1.0"
+description = "Mindloom CLI client"
+requires-python = ">=3.14"
+dependencies = [
+    "click>=8.0",
+    "httpx>=0.28",
+    "mindloom-core",
+]
+
+[tool.uv.sources]
+mindloom-core = { workspace = true }
+
+[project.scripts]
+mindloom = "mindloom_cli.main:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

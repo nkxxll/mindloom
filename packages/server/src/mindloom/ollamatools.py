@@ -17,10 +17,10 @@ def chat_ollama(
         f"Calling ollama with model: {model} and input: {user_input} and system_message: {system_message}"
     )
     response = ollama.chat(
-        model=model.value,
+        model=str(model),
         messages=[
-            {"role": "system", "message": f"{system_message}"},
-            {"role": "user", "message": f"{user_input}"},
+            {"role": "system", "content": system_message},
+            {"role": "user", "content": user_input},
         ],
         think="medium",
     )

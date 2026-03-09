@@ -1,0 +1,1 @@
+# Mindloom shared core library

@@ -4,8 +4,9 @@ from typing import Optional
 
 from pydantic import BaseModel
 from sqlalchemy import Column, DateTime, Integer, String, Text
+from sqlalchemy.ext.declarative import declarative_base
 
-from .db import Base
+Base = declarative_base()
 
 
 def now():
@@ -46,7 +47,7 @@ class Job(Base):
 
 
 class JobCreate(BaseModel):
-    task_type: EthemeralTaskType | ConversationTaskType
+    task_type: "EthemeralTaskType | ConversationTaskType"
     content: str
 
 
@@ -58,6 +59,12 @@ class SectionResponse(BaseModel):
 class FileRequest(BaseModel):
     content: str
     file_path: str
+    model: Optional[Model] = None
+
+
+class EmailRequest(BaseModel):
+    content: str
+    model: Optional[Model] = None
 
 
 class ConversationTaskType(Enum):
@@ -79,7 +86,8 @@ class EthemeralTaskType(Enum):
 
 class Model(StrEnum):
     MINISTRAL = "ministral-3:latest"
-    QWEN3 = "qwen3:14b"
+    QWEN = "qwen3:latest"
+    QWEN314 = "qwen3:14b"
     GEMMA3 = "gemma3:latest"
     LLAMA3 = "llama3.2:latest"
 
@@ -114,6 +122,19 @@ class Prompts(BaseModel):
         "Draft a new email based on the following key points. "
         "Use a professional subject line and a structured body."
     )
+
+
+def get_user_message(task_type: EthemeralTaskType, content: str) -> str:
+    p = Prompts()
+    prefixes = {
+        EthemeralTaskType.FILE: p.fix_file,
+        EthemeralTaskType.SECTION: p.fix_section,
+        EthemeralTaskType.SECTION_EXTEND: p.extend_section,
+        EthemeralTaskType.IMPROVE_EMAIL: p.fix_email,
+        EthemeralTaskType.WRITE_EMAIL: p.write_email,
+    }
+    prefix = prefixes.get(task_type, "")
+    return f"{prefix}\n\n{content}" if prefix else content
 
 
 def get_system_message(task_type: EthemeralTaskType | ConversationTaskType) -> str:

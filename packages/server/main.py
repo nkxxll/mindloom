@@ -1,8 +1,11 @@
 import asyncio
+import logging
 
 import uvicorn
 
 from mindloom import app
+
+logger = logging.getLogger(__name__)
 
 
 async def main():
@@ -13,8 +16,11 @@ async def main():
         reload=False,
     )
     server = uvicorn.Server(config)
-    await server.serve()  # this blocks
+    await server.serve()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Shutdown complete")

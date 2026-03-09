@@ -2,6 +2,13 @@ version = 1
 revision = 3
 requires-python = ">=3.14"
 
+[manifest]
+members = [
+    "mindloom-cli",
+    "mindloom-core",
+    "mindloom-server",
+]
+
 [[package]]
 name = "annotated-doc"
 version = "0.0.4"
@@ -337,11 +344,44 @@ wheels = [
 ]
 
 [[package]]
-name = "mindloom"
+name = "mindloom-cli"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "packages/cli" }
+dependencies = [
+    { name = "click" },
+    { name = "httpx" },
+    { name = "mindloom-core" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "click", specifier = ">=8.0" },
+    { name = "httpx", specifier = ">=0.28" },
+    { name = "mindloom-core", editable = "packages/core" },
+]
+
+[[package]]
+name = "mindloom-core"
+version = "0.1.0"
+source = { editable = "packages/core" }
+dependencies = [
+    { name = "httpx" },
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "httpx", specifier = ">=0.28" },
+    { name = "pydantic", specifier = ">=2.0" },
+]
+
+[[package]]
+name = "mindloom-server"
+version = "0.1.0"
+source = { editable = "packages/server" }
 dependencies = [
     { name = "fastapi", extra = ["standard"] },
+    { name = "mindloom-core" },
     { name = "ollama" },
     { name = "sqlalchemy" },
 ]
@@ -349,6 +389,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", extras = ["standard"], specifier = ">=0.135.1" },
+    { name = "mindloom-core", editable = "packages/core" },
     { name = "ollama", specifier = ">=0.6.1" },
     { name = "sqlalchemy", specifier = ">=2.0.48" },
 ]

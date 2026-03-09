@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import Enum, StrEnum, auto
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import Column, DateTime, Integer, String, Text
 from sqlalchemy.ext.declarative import declarative_base
 
@@ -49,6 +49,17 @@ class Job(Base):
 class JobCreate(BaseModel):
     task_type: "EthemeralTaskType | ConversationTaskType"
     content: str
+
+
+class JobResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    task_type: str
+    content: Optional[str]
+    status: str
+    created_at: datetime
+    updated_at: Optional[datetime]
 
 
 class SectionResponse(BaseModel):

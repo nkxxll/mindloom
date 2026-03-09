@@ -1,7 +1,7 @@
-from sqlalchemy import Column, create_engine
+from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from .models import Base, Job, JobCreate, Status
+from .models import Job, JobCreate, Status
 
 # The 'check_same_thread' argument is specific to SQLite
 SQLALCHEMY_DATABASE_URL = "sqlite:///./sql_app.db"
@@ -25,7 +25,7 @@ def create_job(db: Session, job_data: JobCreate):
 def update_job_status(db: Session, job_id: int, status: Status):
     db_job = db.query(Job).filter(Job.id == job_id).first()
     if db_job:
-        db_job.status = Column(status.value)
+        db_job.status = status.value
         db.commit()
         db.refresh(db_job)
     return db_job

@@ -10,7 +10,7 @@ def test_cli_help_lists_new_groups():
     result = runner.invoke(cli, ["--help"])
 
     assert result.exit_code == 0
-    for command_name in ["email", "text", "code", "git", "extract", "rewrite", "section"]:
+    for command_name in ["ask", "email", "text", "code", "git", "extract", "rewrite", "section"]:
         assert command_name in result.output
 
 
@@ -119,6 +119,44 @@ def test_email_improve_uses_inline_text(monkeypatch):
     assert result.exit_code == 0
     assert result.output.strip() == "improved email"
     assert calls == {"content": "hello team", "model": "qwen3:14b"}
+
+
+def test_ask_command_forwards_markdown_flag(monkeypatch):
+    import mindloom_cli.ask as ask_module
+
+    calls: dict[str, object] = {}
+
+    class FakeAsk:
+        def __init__(self, _config):
+            pass
+
+        def ask(self, question: str, markdown: bool = False, model: str | None = None) -> str:
+            calls["question"] = question
+            calls["markdown"] = markdown
+            calls["model"] = model
+            return "# Garbage Collection Pressure\n\nA short answer."
+
+    monkeypatch.setattr(ask_module, "Ask", FakeAsk)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "ask",
+            "what is garbage collection pressure",
+            "--md",
+            "--model",
+            "qwen3:latest",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert result.output.strip() == "# Garbage Collection Pressure\n\nA short answer."
+    assert calls == {
+        "question": "what is garbage collection pressure",
+        "markdown": True,
+        "model": "qwen3:latest",
+    }
 
 
 def test_text_translate_reads_from_file(monkeypatch):

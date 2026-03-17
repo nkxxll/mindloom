@@ -80,6 +80,23 @@ def health():
         click.secho(f"ERROR: {e}", fg="red", err=True)
 
 
+@cli.command()
+@click.argument("question")
+@click.option(
+    "--md",
+    "markdown",
+    is_flag=True,
+    help="Format the answer as a Markdown article for note-taking.",
+)
+@click.option("--model", default=None, help="Optional model override.")
+def ask(question: str, markdown: bool, model: str | None):
+    from mindloom_cli.ask import Ask
+
+    a = Ask(cfg)
+    result = a.ask(question, markdown=markdown, model=model)
+    click.echo(result)
+
+
 @cli.group(invoke_without_command=True)
 @click.argument("id", required=False, type=click.INT)
 @click.pass_context

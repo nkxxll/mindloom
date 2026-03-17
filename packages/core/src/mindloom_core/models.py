@@ -111,6 +111,12 @@ class GenerateTestsRequest(BaseModel):
     model: Optional[Model] = None
 
 
+class AskRequest(BaseModel):
+    question: str
+    markdown: bool = False
+    model: Optional[Model] = None
+
+
 class ConversationTaskType(Enum):
     """Maybe in the future we want to have a chat with the model maybe a faster model to incremetnally improve some parts of a note or an email.
 
@@ -134,6 +140,7 @@ class EthemeralTaskType(Enum):
     REWRITE_TONE = auto()
     PROOFREAD = auto()
     GENERATE_TESTS = auto()
+    ASK = auto()
 
 
 class Model(StrEnum):

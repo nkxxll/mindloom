@@ -23,6 +23,15 @@ class EndpointCase:
 
 ENDPOINT_CASES = [
     EndpointCase(
+        path="/ask",
+        payload={
+            "question": "what is garbage collection pressure",
+            "model": "ministral-3:latest",
+        },
+        task_type=EthemeralTaskType.ASK,
+        expected_content="what is garbage collection pressure",
+    ),
+    EndpointCase(
         path="/summarize",
         payload={
             "content": "Mindloom helps automate writing workflows.",
@@ -180,3 +189,26 @@ def test_new_endpoints_mark_job_failed_when_llm_errors(case: EndpointCase, make_
 
     assert response.status_code == 500
     assert update_calls[-1]["status"] is Status.FAILED
+
+
+def test_ask_endpoint_markdown_mode_adds_markdown_instructions(make_harness):
+    client, create_calls, update_calls = make_harness()
+    payload = {
+        "question": "what is analytical philosophy",
+        "markdown": True,
+        "model": "ministral-3:latest",
+    }
+    with client:
+        response = client.post("/ask", json=payload)
+
+    assert response.status_code == 200
+    assert len(create_calls) == 1
+    assert create_calls[0].task_type is EthemeralTaskType.ASK
+    assert create_calls[0].content == (
+        "Output format: markdown article\n"
+        "Write a clear note-style answer with a title, short intro, section headings, "
+        "and a brief summary.\n\n"
+        "what is analytical philosophy"
+    )
+    assert update_calls[-1]["status"] is Status.COMPLETED
+    assert update_calls[-1]["result"] == "mocked response"

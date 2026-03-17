@@ -3,6 +3,7 @@ from __future__ import annotations
 from pydantic import BaseModel
 
 from mindloom_core.models import (  # noqa: F401 — re-exported for backwards compat
+    AskRequest,
     CommitMessageRequest,
     ConversationTaskType,
     EmailRequest,
@@ -82,6 +83,10 @@ class Prompts(BaseModel):
         "Generate unit test stubs for the following code. Cover happy paths, "
         "edge cases, and error conditions."
     )
+    ask: str = (
+        "Answer the following question clearly and accurately. "
+        "Use practical examples when they improve understanding."
+    )
 
 
 def get_user_message(task_type: EthemeralTaskType, content: str) -> str:
@@ -100,6 +105,7 @@ def get_user_message(task_type: EthemeralTaskType, content: str) -> str:
         EthemeralTaskType.REWRITE_TONE: p.rewrite_tone,
         EthemeralTaskType.PROOFREAD: p.proofread,
         EthemeralTaskType.GENERATE_TESTS: p.generate_tests,
+        EthemeralTaskType.ASK: p.ask,
     }
     prefix = prefixes.get(task_type, "")
     return f"{prefix}\n\n{content}" if prefix else content
@@ -161,6 +167,10 @@ def get_system_message(task_type: EthemeralTaskType | ConversationTaskType) -> s
         EthemeralTaskType.GENERATE_TESTS: (
             "Act as a QA Engineer. Write idiomatic test code using the "
             "specified framework. Include descriptive test names."
+        ),
+        EthemeralTaskType.ASK: (
+            "Act as a knowledgeable tutor. Give direct, factual answers, "
+            "explain concepts clearly, and acknowledge uncertainty when needed."
         ),
     }
 

@@ -7,6 +7,7 @@ from fastapi.exceptions import HTTPException
 
 from . import db as database
 from .models import (
+    AskRequest,
     CommitMessageRequest,
     EmailRequest,
     EthemeralTaskType,
@@ -29,6 +30,11 @@ from .models import (
 from .ollamatools import chat_ollama
 
 logger = logging.getLogger(__name__)
+ASK_MARKDOWN_STYLE_HINT = (
+    "Output format: markdown article\n"
+    "Write a clear note-style answer with a title, short intro, section headings, "
+    "and a brief summary."
+)
 
 
 @asynccontextmanager
@@ -161,6 +167,24 @@ async def write_email(
     job = database.create_job(db, JobCreate(task_type=EthemeralTaskType.WRITE_EMAIL, content=email_request.content))
     try:
         result = _run_task(EthemeralTaskType.WRITE_EMAIL, email_request.content, email_request.model)
+        database.update_job_status(db, job.id, Status.COMPLETED, result=result.content)
+        return result
+    except Exception:
+        database.update_job_status(db, job.id, Status.FAILED)
+        raise
+
+
+@app.post("/ask")
+async def ask(
+    ask_request: AskRequest, db: CassandraSession = Depends(get_db)
+) -> SectionResponse:
+    content = ask_request.question
+    if ask_request.markdown:
+        content = f"{ASK_MARKDOWN_STYLE_HINT}\n\n{content}"
+
+    job = database.create_job(db, JobCreate(task_type=EthemeralTaskType.ASK, content=content))
+    try:
+        result = _run_task(EthemeralTaskType.ASK, content, ask_request.model)
         database.update_job_status(db, job.id, Status.COMPLETED, result=result.content)
         return result
     except Exception:

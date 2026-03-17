@@ -91,3 +91,37 @@ sudo cp -r . /opt/mindloom
 sudo chown -R mindloom:mindloom /opt/mindloom
 sudo systemctl start mindloom
 ```
+
+## Deployment as a user service
+
+If you prefer to run Mindloom under your own user account instead of a dedicated system user, you can use the provided `mindloom.user.service` unit file. This expects the repository to live at `~/git/mindloom` and `uv` to be installed at `~/.local/bin/uv`.
+
+### 1. Install the user service
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp mindloom.user.service ~/.config/systemd/user/mindloom.service
+systemctl --user daemon-reload
+systemctl --user enable --now mindloom
+```
+
+### 2. Check status and logs
+
+```bash
+systemctl --user status mindloom
+journalctl --user -u mindloom -f
+```
+
+### 3. Enable lingering (optional)
+
+By default, user services only run while the user is logged in. To keep the service running after logout:
+
+```bash
+sudo loginctl enable-linger $USER
+```
+
+### Updating the application
+
+```bash
+systemctl --user restart mindloom
+```

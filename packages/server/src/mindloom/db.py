@@ -8,7 +8,7 @@ from typing import Any
 
 from cassandra.auth import PlainTextAuthProvider
 from cassandra.cluster import Cluster, Session as CassandraSession
-from cassandra.policies import WhiteListRoundRobinPolicy
+from cassandra.policies import AddressTranslator, WhiteListRoundRobinPolicy
 from cassandra.query import dict_factory
 from dotenv import load_dotenv
 
@@ -17,6 +17,20 @@ from .models import Job, JobCreate, Status
 logger = logging.getLogger(__name__)
 
 _IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+class _LocalAddressTranslator(AddressTranslator):
+    """Maps any discovered Cassandra host address back to the first contact point.
+
+    This is needed when Cassandra runs in Docker and advertises its container-internal
+    IP (e.g. 172.19.0.2) which is unreachable from the host.
+    """
+
+    def __init__(self, target: str) -> None:
+        self._target = target
+
+    def translate(self, addr: str) -> str:
+        return self._target
 
 load_dotenv()
 
@@ -101,6 +115,7 @@ def init_db() -> CassandraSession:
         port=SETTINGS.port,
         auth_provider=auth_provider,
         load_balancing_policy=WhiteListRoundRobinPolicy(SETTINGS.contact_points),
+        address_translator=_LocalAddressTranslator(SETTINGS.contact_points[0]),
     )
     session = cluster.connect()
     session.row_factory = dict_factory

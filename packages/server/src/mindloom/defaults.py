@@ -1,3 +1,3 @@
 from .models import Model
 
-DEFAULT_MODEL = Model.GEMMA3
+DEFAULT_MODEL = Model.QWEN35

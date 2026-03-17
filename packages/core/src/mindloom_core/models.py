@@ -147,6 +147,7 @@ class Model(StrEnum):
     MINISTRAL = "ministral-3:latest"
     QWEN = "qwen3:latest"
     QWEN314 = "qwen3:14b"
+    QWEN35 = "qwen3.5:latest"
     GEMMA3 = "gemma3:latest"
     LLAMA3 = "llama3.2:latest"
 

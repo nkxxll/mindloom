@@ -1,13 +1,32 @@
 import sys
+from collections.abc import Callable
 from pathlib import Path
+from typing import ParamSpec, TypeVar
 
 import click
+from rich.console import Console
 
 from mindloom_cli.config import get_config, initialize_config
 from mindloom_cli.display import render_jobs_table
 from mindloom_cli.fileio import read_file, write_file
 
 cfg = get_config()
+_REQUEST_WAIT_MESSAGE = "Waiting for response..."
+_BRAILLE_SPINNER = "dots"
+_SPINNER_CONSOLE = Console(stderr=True)
+
+P = ParamSpec("P")
+T = TypeVar("T")
+
+
+def with_response_spinner(
+    operation: Callable[P, T], /, *args: P.args, **kwargs: P.kwargs
+) -> T:
+    if not sys.stderr.isatty():
+        return operation(*args, **kwargs)
+
+    with _SPINNER_CONSOLE.status(_REQUEST_WAIT_MESSAGE, spinner=_BRAILLE_SPINNER):
+        return operation(*args, **kwargs)
 
 
 class DefaultCommandGroup(click.Group):
@@ -71,7 +90,7 @@ def health():
 
     h = Health(cfg)
     try:
-        res = h.get_health()
+        res = with_response_spinner(h.get_health)
         if res:
             click.secho("OK", fg="green")
         else:
@@ -93,7 +112,7 @@ def ask(question: str, markdown: bool, model: str | None):
     from mindloom_cli.ask import Ask
 
     a = Ask(cfg)
-    result = a.ask(question, markdown=markdown, model=model)
+    result = with_response_spinner(a.ask, question, markdown=markdown, model=model)
     click.echo(result)
 
 
@@ -108,10 +127,10 @@ def jobs(ctx: click.Context, id: int | None):
 
     j = Jobs(cfg)
     if id is not None:
-        job = j.get_job_by_id(id)
+        job = with_response_spinner(j.get_job_by_id, id)
         render_jobs_table([job], title=f"Job {id}")
     else:
-        jobs = j.get_jobs()
+        jobs = with_response_spinner(j.get_jobs)
         render_jobs_table(jobs)
 
 
@@ -121,7 +140,7 @@ def restart(id: int):
     from mindloom_cli.jobs import Jobs
 
     j = Jobs(cfg)
-    job = j.restart_by_id(id)
+    job = with_response_spinner(j.restart_by_id, id)
     render_jobs_table([job], title=f"Restarted Job {id}")
 
 
@@ -145,7 +164,7 @@ def file(file_path: Path, model: str | None):
 
     s = Section(cfg)
     content = read_file(file_path)
-    result = s.improve_file(content, file_path, model)
+    result = with_response_spinner(s.improve_file, content, file_path, model)
     write_file(file_path, result)
     click.secho(f"Updated {file_path}", fg="green")
 
@@ -173,7 +192,7 @@ def section_improve(file_path: Path, line_range: str | None, model: str | None):
     content = read_file(file_path)
 
     if line_range is None:
-        result = s.improve_file(content, file_path, model)
+        result = with_response_spinner(s.improve_file, content, file_path, model)
         write_file(file_path, result)
         click.secho(f"Updated {file_path}", fg="green")
         return
@@ -190,7 +209,9 @@ def section_improve(file_path: Path, line_range: str | None, model: str | None):
         raise click.BadParameter(str(exc)) from exc
 
     selected_content = "".join(lines[start - 1 : end])
-    improved = s.improve_section(selected_content, file_path, start, end, model)
+    improved = with_response_spinner(
+        s.improve_section, selected_content, file_path, start, end, model
+    )
     updated_content = "".join(lines[: start - 1]) + improved + "".join(lines[end:])
     write_file(file_path, updated_content)
     click.secho(f"Updated lines {start}:{end} in {file_path}", fg="green")
@@ -225,7 +246,9 @@ def section_extend(file_path: Path, line_range: str | None, model: str | None):
             raise click.BadParameter(str(exc)) from exc
 
     selected_content = "".join(lines[start - 1 : end])
-    extended = s.extend_section(selected_content, file_path, start, end, model)
+    extended = with_response_spinner(
+        s.extend_section, selected_content, file_path, start, end, model
+    )
     updated_content = "".join(lines[: start - 1]) + extended + "".join(lines[end:])
     write_file(file_path, updated_content)
     click.secho(f"Extended lines {start}:{end} in {file_path}", fg="green")
@@ -244,7 +267,7 @@ def email_improve(text: str | None, input_file: Path | None, model: str | None):
 
     e = Email(cfg)
     content = resolve_content_input(text, input_file)
-    result = e.improve_email(content, model)
+    result = with_response_spinner(e.improve_email, content, model)
     click.echo(result)
 
 
@@ -256,7 +279,7 @@ def email_write(text: str | None, input_file: Path | None, model: str | None):
 
     e = Email(cfg)
     content = resolve_content_input(text, input_file)
-    result = e.write_email(content, model)
+    result = with_response_spinner(e.write_email, content, model)
     click.echo(result)
 
 
@@ -284,7 +307,9 @@ def text_summarize(
 
     t = Text(cfg)
     content = resolve_content_input(text, input_file)
-    result = t.summarize(content, max_length=max_length, model=model)
+    result = with_response_spinner(
+        t.summarize, content, max_length=max_length, model=model
+    )
     click.echo(result)
 
 
@@ -304,7 +329,8 @@ def text_translate(
 
     t = Text(cfg)
     content = resolve_content_input(text, input_file)
-    result = t.translate(
+    result = with_response_spinner(
+        t.translate,
         content,
         target_language=target_language,
         source_language=source_language,
@@ -321,7 +347,7 @@ def text_proofread(text: str | None, input_file: Path | None, model: str | None)
 
     t = Text(cfg)
     content = resolve_content_input(text, input_file)
-    result = t.proofread(content, model=model)
+    result = with_response_spinner(t.proofread, content, model=model)
     click.echo(result)
 
 
@@ -344,7 +370,9 @@ def code_explain(
 
     c = Code(cfg)
     content = resolve_content_input(text, input_file)
-    result = c.explain_code(content, language=language, model=model)
+    result = with_response_spinner(
+        c.explain_code, content, language=language, model=model
+    )
     click.echo(result)
 
 
@@ -364,7 +392,9 @@ def code_tests(
 
     c = Code(cfg)
     content = resolve_content_input(text, input_file)
-    result = c.generate_tests(content, language=language, framework=framework, model=model)
+    result = with_response_spinner(
+        c.generate_tests, content, language=language, framework=framework, model=model
+    )
     click.echo(result)
 
 
@@ -381,7 +411,7 @@ def git_commit_message(text: str | None, input_file: Path | None, model: str | N
 
     g = Git(cfg)
     content = resolve_content_input(text, input_file)
-    result = g.generate_commit_message(content, model=model)
+    result = with_response_spinner(g.generate_commit_message, content, model=model)
     click.echo(result)
 
 
@@ -398,7 +428,7 @@ def extract_actions(text: str | None, input_file: Path | None, model: str | None
 
     e = Extract(cfg)
     content = resolve_content_input(text, input_file)
-    result = e.extract_actions(content, model=model)
+    result = with_response_spinner(e.extract_actions, content, model=model)
     click.echo(result)
 
 
@@ -421,7 +451,9 @@ def rewrite_tone(
 
     r = Rewrite(cfg)
     content = resolve_content_input(text, input_file)
-    result = r.rewrite_tone(content, target_tone=target_tone, model=model)
+    result = with_response_spinner(
+        r.rewrite_tone, content, target_tone=target_tone, model=model
+    )
     click.echo(result)
 
 

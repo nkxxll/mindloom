@@ -88,6 +88,10 @@ class Model(StrEnum):
     GEMMA3 = "gemma3:latest"
     LLAMA3 = "llama3.2:latest"
 
+    @property
+    def supports_thinking(self) -> bool:
+        return self in {Model.QWEN, Model.QWEN314}
+
 
 class Prompts(BaseModel):
     # For TaskType.FILE: Fixing an entire code or text file

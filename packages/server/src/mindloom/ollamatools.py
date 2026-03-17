@@ -16,12 +16,14 @@ def chat_ollama(
     logger.info(
         f"Calling ollama with model: {model} and input: {user_input} and system_message: {system_message}"
     )
-    response = ollama.chat(
-        model=str(model),
-        messages=[
+    kwargs: dict = {
+        "model": str(model),
+        "messages": [
             {"role": "system", "content": system_message},
             {"role": "user", "content": user_input},
         ],
-        think="medium",
-    )
+    }
+    if model.supports_thinking:
+        kwargs["think"] = "medium"
+    response = ollama.chat(**kwargs)
     return response.message

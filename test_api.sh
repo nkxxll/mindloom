@@ -7,6 +7,7 @@ FAIL=0
 GREEN='\033[0;32m'
 RED='\033[0;31m'
 NC='\033[0m'
+MODEL='ministral-3:latest'
 
 check() {
   local name="$1"
@@ -38,7 +39,7 @@ body=$(curl -s -w "\n%{http_code}" -X POST "$BASE_URL/section/improve" \
     "end": 120,
     "content": "the quick brown fox jump over the lazy dog. it were a beautifull day in the forrest.",
     "file_path": "notes/nature.md",
-    "model": "qwen3:latest"
+    "model": "'"$MODEL"'"
   }')
 code=$(echo "$body" | tail -1)
 body=$(echo "$body")
@@ -52,7 +53,7 @@ body=$(curl -s -w "\n%{http_code}" -X POST "$BASE_URL/section/extend" \
     "end": 95,
     "content": "Machine learning is transforming how we interact with software.",
     "file_path": "notes/ml_intro.md",
-    "model": "qwen3:latest"
+    "model": "'"$MODEL"'"
   }')
 code=$(echo "$body" | tail -1)
 body=$(echo "$body")
@@ -64,7 +65,7 @@ body=$(curl -s -w "\n%{http_code}" -X POST "$BASE_URL/file/improve" \
   -d '{
     "content": "def add(a,b):\n  return a+b\ndef subtract( a, b ):\n    return a -b\n",
     "file_path": "utils/math_helpers.py",
-    "model": "qwen3:latest"
+    "model": "'"$MODEL"'"
   }')
 code=$(echo "$body" | tail -1)
 body=$(echo "$body")
@@ -75,7 +76,7 @@ body=$(curl -s -w "\n%{http_code}" -X POST "$BASE_URL/email/improve" \
   -H "Content-Type: application/json" \
   -d '{
     "content": "hey, just wanted to check in about the project. can we meet sometime this week or next? let me know. thanks",
-    "model": "qwen3:latest"
+    "model": "'"$MODEL"'"
   }')
 code=$(echo "$body" | tail -1)
 body=$(echo "$body")
@@ -86,7 +87,7 @@ body=$(curl -s -w "\n%{http_code}" -X POST "$BASE_URL/email/write" \
   -H "Content-Type: application/json" \
   -d '{
     "content": "Key points: request Q3 budget approval from finance team, deadline is Friday, need $15k for cloud infrastructure expansion",
-    "model": "qwen3:latest"
+    "model": "'"$MODEL"'"
   }')
 code=$(echo "$body" | tail -1)
 body=$(echo "$body")

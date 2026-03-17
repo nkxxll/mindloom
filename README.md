@@ -18,6 +18,27 @@ uv sync
 uv run uvicorn packages/server/src/mindloom/app:app --reload
 ```
 
+## Cassandra configuration
+
+Mindloom now stores jobs in Cassandra. Copy `.env.example` to `.env` and adjust values for your instance:
+
+```bash
+cp .env.example .env
+```
+
+Required settings:
+
+- `CASSANDRA_CONTACT_POINTS` (comma-separated hosts)
+- `CASSANDRA_PORT`
+- `CASSANDRA_KEYSPACE`
+- `CASSANDRA_TABLE`
+- `CASSANDRA_REPLICATION_FACTOR`
+
+Optional settings:
+
+- `CASSANDRA_USERNAME`
+- `CASSANDRA_PASSWORD`
+
 ## Deployment (Linux / systemd)
 
 ### 1. Install uv

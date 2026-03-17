@@ -1,41 +1,244 @@
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
+import logging
+import os
+import re
+import time
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Any
+
+from cassandra.auth import PlainTextAuthProvider
+from cassandra.cluster import Cluster, Session as CassandraSession
+from cassandra.query import dict_factory
+from dotenv import load_dotenv
 
 from .models import Job, JobCreate, Status
 
-# The 'check_same_thread' argument is specific to SQLite
-SQLALCHEMY_DATABASE_URL = "sqlite:///./sql_app.db"
+logger = logging.getLogger(__name__)
 
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
-)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+_IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+load_dotenv()
 
 
-def create_job(db: Session, job_data: JobCreate):
-    db_job = Job(
-        task_type=job_data.task_type.value, content=job_data.content, status="pending"
+@dataclass(frozen=True)
+class CassandraSettings:
+    contact_points: list[str]
+    port: int
+    username: str | None
+    password: str | None
+    keyspace: str
+    table: str
+    replication_factor: int
+
+
+def _optional_env(name: str) -> str | None:
+    value = os.getenv(name)
+    if value is None:
+        return None
+    stripped = value.strip()
+    return stripped or None
+
+
+def _read_settings() -> CassandraSettings:
+    contact_points = [
+        part.strip()
+        for part in os.getenv("CASSANDRA_CONTACT_POINTS", "127.0.0.1").split(",")
+        if part.strip()
+    ]
+    if not contact_points:
+        msg = "CASSANDRA_CONTACT_POINTS must include at least one host"
+        raise ValueError(msg)
+
+    keyspace = os.getenv("CASSANDRA_KEYSPACE", "mindloom")
+    table = os.getenv("CASSANDRA_TABLE", "jobs")
+    for identifier_name, identifier_value in (("CASSANDRA_KEYSPACE", keyspace), ("CASSANDRA_TABLE", table)):
+        if not _IDENTIFIER_PATTERN.match(identifier_value):
+            msg = (
+                f"{identifier_name} must match pattern "
+                f"{_IDENTIFIER_PATTERN.pattern}; got {identifier_value!r}"
+            )
+            raise ValueError(msg)
+
+    username = _optional_env("CASSANDRA_USERNAME")
+    password = _optional_env("CASSANDRA_PASSWORD")
+    if bool(username) != bool(password):
+        msg = "CASSANDRA_USERNAME and CASSANDRA_PASSWORD must either both be set or both be unset"
+        raise ValueError(msg)
+
+    return CassandraSettings(
+        contact_points=contact_points,
+        port=int(os.getenv("CASSANDRA_PORT", "9042")),
+        username=username,
+        password=password,
+        keyspace=keyspace,
+        table=table,
+        replication_factor=int(os.getenv("CASSANDRA_REPLICATION_FACTOR", "1")),
     )
-    db.add(db_job)
-    db.commit()
-    db.refresh(db_job)
-    return db_job
 
 
-def update_job_status(db: Session, job_id: int, status: Status, result: str | None = None):
-    db_job = db.query(Job).filter(Job.id == job_id).first()
-    if db_job:
-        db_job.status = status.value
-        if result is not None:
-            db_job.result = result
-        db.commit()
-        db.refresh(db_job)
-    return db_job
+SETTINGS = _read_settings()
+
+cluster: Cluster | None = None
+session: CassandraSession | None = None
 
 
-def get_all_jobs(db: Session):
-    return db.query(Job).all()
+def init_db() -> CassandraSession:
+    global cluster, session
+
+    if session is not None:
+        return session
+
+    auth_provider = None
+    if SETTINGS.username and SETTINGS.password:
+        auth_provider = PlainTextAuthProvider(
+            username=SETTINGS.username,
+            password=SETTINGS.password,
+        )
+
+    cluster = Cluster(
+        contact_points=SETTINGS.contact_points,
+        port=SETTINGS.port,
+        auth_provider=auth_provider,
+    )
+    session = cluster.connect()
+    session.row_factory = dict_factory
+
+    session.execute(
+        f"CREATE KEYSPACE IF NOT EXISTS {SETTINGS.keyspace} "
+        "WITH replication = "
+        f"{{'class': 'SimpleStrategy', 'replication_factor': {SETTINGS.replication_factor}}}"
+    )
+    session.set_keyspace(SETTINGS.keyspace)
+    session.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS {SETTINGS.table} (
+            id bigint PRIMARY KEY,
+            task_type text,
+            content text,
+            result text,
+            status text,
+            created_at timestamp,
+            updated_at timestamp
+        )
+        """
+    )
+    logger.info(
+        "Connected to Cassandra at %s:%s (%s.%s)",
+        ",".join(SETTINGS.contact_points),
+        SETTINGS.port,
+        SETTINGS.keyspace,
+        SETTINGS.table,
+    )
+    return session
 
 
-def get_job_by_id(db: Session, job_id: int):
-    return db.query(Job).filter(Job.id == job_id).first()
+def close_db() -> None:
+    global cluster, session
+
+    if session is not None:
+        session.shutdown()
+        session = None
+    if cluster is not None:
+        cluster.shutdown()
+        cluster = None
+
+
+def get_session() -> CassandraSession:
+    return init_db()
+
+
+def _row_to_job(row: dict[str, Any]) -> Job:
+    return Job(
+        id=int(row["id"]),
+        task_type=str(row["task_type"]),
+        content=row["content"],
+        result=row["result"],
+        status=str(row["status"]),
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+    )
+
+
+def _new_job_id() -> int:
+    return time.time_ns()
+
+
+def create_job(db: CassandraSession, job_data: JobCreate) -> Job:
+    created_at = datetime.now(timezone.utc)
+    job = Job(
+        id=_new_job_id(),
+        task_type=str(job_data.task_type.value),
+        content=job_data.content,
+        result=None,
+        status=Status.PENDING.value,
+        created_at=created_at,
+        updated_at=created_at,
+    )
+    db.execute(
+        f"""
+        INSERT INTO {SETTINGS.table}
+        (id, task_type, content, result, status, created_at, updated_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """,
+        (
+            job.id,
+            job.task_type,
+            job.content,
+            job.result,
+            job.status,
+            job.created_at,
+            job.updated_at,
+        ),
+    )
+    return job
+
+
+def update_job_status(
+    db: CassandraSession, job_id: int, status: Status, result: str | None = None
+) -> Job | None:
+    existing_job = get_job_by_id(db, job_id)
+    if existing_job is None:
+        return None
+
+    updated_result = existing_job.result if result is None else result
+    updated_at = datetime.now(timezone.utc)
+    db.execute(
+        f"""
+        UPDATE {SETTINGS.table}
+        SET status = %s, result = %s, updated_at = %s
+        WHERE id = %s
+        """,
+        (status.value, updated_result, updated_at, job_id),
+    )
+    return existing_job.model_copy(
+        update={
+            "status": status.value,
+            "result": updated_result,
+            "updated_at": updated_at,
+        }
+    )
+
+
+def get_all_jobs(db: CassandraSession) -> list[Job]:
+    rows = db.execute(
+        f"""
+        SELECT id, task_type, content, result, status, created_at, updated_at
+        FROM {SETTINGS.table}
+        """
+    )
+    jobs = [_row_to_job(row) for row in rows]
+    return sorted(jobs, key=lambda job: job.created_at, reverse=True)
+
+
+def get_job_by_id(db: CassandraSession, job_id: int) -> Job | None:
+    row = db.execute(
+        f"""
+        SELECT id, task_type, content, result, status, created_at, updated_at
+        FROM {SETTINGS.table}
+        WHERE id = %s
+        """,
+        (job_id,),
+    ).one()
+    if row is None:
+        return None
+    return _row_to_job(row)

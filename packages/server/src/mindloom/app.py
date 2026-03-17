@@ -1,13 +1,12 @@
 import logging
 from contextlib import asynccontextmanager
 
+from cassandra.cluster import Session as CassandraSession
 from fastapi import Depends, FastAPI, Response, status
 from fastapi.exceptions import HTTPException
-from sqlalchemy.orm import Session
 
 from . import db as database
 from .models import (
-    Base,
     EmailRequest,
     EthemeralTaskType,
     FileRequest,
@@ -23,24 +22,19 @@ from .ollamatools import chat_ollama
 
 logger = logging.getLogger(__name__)
 
-Base.metadata.create_all(bind=database.engine)
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Server starting up")
+    database.init_db()
     yield
     logger.info("Server shutting down — closing database connections")
-    database.engine.dispose()
+    database.close_db()
 
 
 # Dependency to get the DB session
 def get_db():
-    db = database.SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+    yield database.get_session()
 
 
 app = FastAPI(lifespan=lifespan)
@@ -52,12 +46,12 @@ async def root():
 
 
 @app.get("/jobs", response_model=list[JobResponse])
-async def list_jobs(db: Session = Depends(get_db)):
+async def list_jobs(db: CassandraSession = Depends(get_db)):
     return database.get_all_jobs(db)
 
 
 @app.get("/jobs/{job_id}", response_model=JobResponse)
-async def get_job(job_id: int, db: Session = Depends(get_db)):
+async def get_job(job_id: int, db: CassandraSession = Depends(get_db)):
     job = database.get_job_by_id(db, job_id)
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Job {job_id} not found")
@@ -65,7 +59,7 @@ async def get_job(job_id: int, db: Session = Depends(get_db)):
 
 
 @app.post("/jobs/{job_id}/restart", response_model=JobResponse)
-async def restart_job(job_id: int, db: Session = Depends(get_db)):
+async def restart_job(job_id: int, db: CassandraSession = Depends(get_db)):
     job = database.get_job_by_id(db, job_id)
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Job {job_id} not found")
@@ -98,7 +92,7 @@ def _run_task(task_type: EthemeralTaskType, content: str, model) -> SectionRespo
 
 @app.post("/section/improve")
 async def fix_section(
-    section_request: SectionRequest, db: Session = Depends(get_db)
+    section_request: SectionRequest, db: CassandraSession = Depends(get_db)
 ) -> SectionResponse:
     job = database.create_job(db, JobCreate(task_type=EthemeralTaskType.SECTION, content=section_request.content))
     try:
@@ -112,7 +106,7 @@ async def fix_section(
 
 @app.post("/section/extend")
 async def extend_section(
-    section_request: SectionRequest, db: Session = Depends(get_db)
+    section_request: SectionRequest, db: CassandraSession = Depends(get_db)
 ) -> SectionResponse:
     job = database.create_job(db, JobCreate(task_type=EthemeralTaskType.SECTION_EXTEND, content=section_request.content))
     try:
@@ -126,7 +120,7 @@ async def extend_section(
 
 @app.post("/file/improve")
 async def fix_file(
-    file_request: FileRequest, db: Session = Depends(get_db)
+    file_request: FileRequest, db: CassandraSession = Depends(get_db)
 ) -> SectionResponse:
     job = database.create_job(db, JobCreate(task_type=EthemeralTaskType.FILE, content=file_request.content))
     try:
@@ -140,7 +134,7 @@ async def fix_file(
 
 @app.post("/email/improve")
 async def improve_email(
-    email_request: EmailRequest, db: Session = Depends(get_db)
+    email_request: EmailRequest, db: CassandraSession = Depends(get_db)
 ) -> SectionResponse:
     job = database.create_job(db, JobCreate(task_type=EthemeralTaskType.IMPROVE_EMAIL, content=email_request.content))
     try:
@@ -154,7 +148,7 @@ async def improve_email(
 
 @app.post("/email/write")
 async def write_email(
-    email_request: EmailRequest, db: Session = Depends(get_db)
+    email_request: EmailRequest, db: CassandraSession = Depends(get_db)
 ) -> SectionResponse:
     job = database.create_job(db, JobCreate(task_type=EthemeralTaskType.WRITE_EMAIL, content=email_request.content))
     try:

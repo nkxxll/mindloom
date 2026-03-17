@@ -7,11 +7,11 @@
 - **Lint/format**: `ruff check .`, `ruff format .`
 
 ## Architecture & Structure
-- **Framework**: FastAPI + SQLAlchemy + Ollama (LLM integration)
+- **Framework**: FastAPI + Cassandra (scylla-driver) + Ollama (LLM integration)
 - **Main entry**: `main.py` → uvicorn server on port 8000
 - **API routes**: `mindloom/app.py` → `/health` (GET), `/section` (POST)
-- **Database**: SQLite (`sql_app.db`) with `Job` model for persistence
-- **Models**: Pydantic schemas (`SectionRequest`, `SectionResponse`), SQLAlchemy ORM (`Job`)
+- **Database**: Cassandra keyspace/table (`CASSANDRA_KEYSPACE`, `CASSANDRA_TABLE`) for `Job` persistence
+- **Models**: Pydantic schemas (`SectionRequest`, `SectionResponse`, `Job`, `JobResponse`)
 - **LLM**: Ollama integration (`ollamatools.py`) with multiple models (Ministral, Qwen, Gemma, Llama)
 - **Task types**: `EthemeralTaskType` (FILE, SECTION, SECTION_EXTEND, IMPROVE_EMAIL, WRITE_EMAIL)
 

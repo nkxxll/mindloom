@@ -1,16 +1,10 @@
+from __future__ import annotations
+
 from datetime import datetime
 from enum import Enum, StrEnum, auto
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict
-from sqlalchemy import Column, DateTime, Integer, String, Text
-from sqlalchemy.ext.declarative import declarative_base
-
-Base = declarative_base()
-
-
-def now():
-    return datetime.now()
+from pydantic import BaseModel
 
 
 class SectionRequest(BaseModel):
@@ -29,33 +23,22 @@ class Status(StrEnum):
     FAILED = "failed"
 
 
-class Job(Base):
-    __tablename__ = "jobs"
-
-    id = Column(Integer, primary_key=True, index=True)
-    task_type = Column(String, index=True)
-
-    # Using Text for long strings (unlimited length in SQLite)
-    content = Column(Text, nullable=True)
-
-    result = Column(Text, nullable=True)
-
-    # Common statuses: "pending", "running", "completed", "failed"
-    status = Column(String, default="pending")
-
-    # Good practice: Track when the job was created/updated
-    created_at = Column(DateTime, default=now())
-    updated_at = Column(DateTime, default=now(), onupdate=now())
+class Job(BaseModel):
+    id: int
+    task_type: str
+    content: Optional[str]
+    result: Optional[str]
+    status: str
+    created_at: datetime
+    updated_at: Optional[datetime]
 
 
 class JobCreate(BaseModel):
-    task_type: "EthemeralTaskType | ConversationTaskType"
+    task_type: EthemeralTaskType | ConversationTaskType
     content: str
 
 
 class JobResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
     id: int
     task_type: str
     content: Optional[str]

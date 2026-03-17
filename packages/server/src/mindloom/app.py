@@ -56,6 +56,14 @@ async def list_jobs(db: Session = Depends(get_db)):
     return database.get_all_jobs(db)
 
 
+@app.get("/jobs/{job_id}", response_model=JobResponse)
+async def get_job(job_id: int, db: Session = Depends(get_db)):
+    job = database.get_job_by_id(db, job_id)
+    if job is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Job {job_id} not found")
+    return job
+
+
 @app.post("/jobs/{job_id}/restart", response_model=JobResponse)
 async def restart_job(job_id: int, db: Session = Depends(get_db)):
     job = database.get_job_by_id(db, job_id)
@@ -64,8 +72,8 @@ async def restart_job(job_id: int, db: Session = Depends(get_db)):
     task_type = EthemeralTaskType(int(job.task_type))
     database.update_job_status(db, job_id, Status.RUNNING)
     try:
-        _run_task(task_type, job.content, None)
-        return database.update_job_status(db, job_id, Status.COMPLETED)
+        result = _run_task(task_type, job.content, None)
+        return database.update_job_status(db, job_id, Status.COMPLETED, result=result.content)
     except Exception:
         database.update_job_status(db, job_id, Status.FAILED)
         raise
@@ -95,7 +103,7 @@ async def fix_section(
     job = database.create_job(db, JobCreate(task_type=EthemeralTaskType.SECTION, content=section_request.content))
     try:
         result = _run_task(EthemeralTaskType.SECTION, section_request.content, section_request.model)
-        database.update_job_status(db, job.id, Status.COMPLETED)
+        database.update_job_status(db, job.id, Status.COMPLETED, result=result.content)
         return result
     except Exception:
         database.update_job_status(db, job.id, Status.FAILED)
@@ -109,7 +117,7 @@ async def extend_section(
     job = database.create_job(db, JobCreate(task_type=EthemeralTaskType.SECTION_EXTEND, content=section_request.content))
     try:
         result = _run_task(EthemeralTaskType.SECTION_EXTEND, section_request.content, section_request.model)
-        database.update_job_status(db, job.id, Status.COMPLETED)
+        database.update_job_status(db, job.id, Status.COMPLETED, result=result.content)
         return result
     except Exception:
         database.update_job_status(db, job.id, Status.FAILED)
@@ -123,7 +131,7 @@ async def fix_file(
     job = database.create_job(db, JobCreate(task_type=EthemeralTaskType.FILE, content=file_request.content))
     try:
         result = _run_task(EthemeralTaskType.FILE, file_request.content, file_request.model)
-        database.update_job_status(db, job.id, Status.COMPLETED)
+        database.update_job_status(db, job.id, Status.COMPLETED, result=result.content)
         return result
     except Exception:
         database.update_job_status(db, job.id, Status.FAILED)
@@ -137,7 +145,7 @@ async def improve_email(
     job = database.create_job(db, JobCreate(task_type=EthemeralTaskType.IMPROVE_EMAIL, content=email_request.content))
     try:
         result = _run_task(EthemeralTaskType.IMPROVE_EMAIL, email_request.content, email_request.model)
-        database.update_job_status(db, job.id, Status.COMPLETED)
+        database.update_job_status(db, job.id, Status.COMPLETED, result=result.content)
         return result
     except Exception:
         database.update_job_status(db, job.id, Status.FAILED)
@@ -151,7 +159,7 @@ async def write_email(
     job = database.create_job(db, JobCreate(task_type=EthemeralTaskType.WRITE_EMAIL, content=email_request.content))
     try:
         result = _run_task(EthemeralTaskType.WRITE_EMAIL, email_request.content, email_request.model)
-        database.update_job_status(db, job.id, Status.COMPLETED)
+        database.update_job_status(db, job.id, Status.COMPLETED, result=result.content)
         return result
     except Exception:
         database.update_job_status(db, job.id, Status.FAILED)

@@ -38,6 +38,8 @@ class Job(Base):
     # Using Text for long strings (unlimited length in SQLite)
     content = Column(Text, nullable=True)
 
+    result = Column(Text, nullable=True)
+
     # Common statuses: "pending", "running", "completed", "failed"
     status = Column(String, default="pending")
 
@@ -57,6 +59,7 @@ class JobResponse(BaseModel):
     id: int
     task_type: str
     content: Optional[str]
+    result: Optional[str]
     status: str
     created_at: datetime
     updated_at: Optional[datetime]

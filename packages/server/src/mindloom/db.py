@@ -22,10 +22,12 @@ def create_job(db: Session, job_data: JobCreate):
     return db_job
 
 
-def update_job_status(db: Session, job_id: int, status: Status):
+def update_job_status(db: Session, job_id: int, status: Status, result: str | None = None):
     db_job = db.query(Job).filter(Job.id == job_id).first()
     if db_job:
         db_job.status = status.value
+        if result is not None:
+            db_job.result = result
         db.commit()
         db.refresh(db_job)
     return db_job

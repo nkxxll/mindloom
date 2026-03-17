@@ -93,6 +93,101 @@ code=$(echo "$body" | tail -1)
 body=$(echo "$body")
 check "POST /email/write" "$code" 200 "$body"
 
+# ── POST /summarize ──────────────────────────────────────────────────────────
+body=$(curl -s -w "\n%{http_code}" -X POST "$BASE_URL/summarize" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content": "Mindloom uses FastAPI and local LLMs to help improve and generate text workflows for developers and writers.",
+    "max_length": 35,
+    "model": "'"$MODEL"'"
+  }')
+code=$(echo "$body" | tail -1)
+body=$(echo "$body")
+check "POST /summarize" "$code" 200 "$body"
+
+# ── POST /translate ──────────────────────────────────────────────────────────
+body=$(curl -s -w "\n%{http_code}" -X POST "$BASE_URL/translate" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content": "Please share the release notes with the team today.",
+    "target_language": "German",
+    "source_language": "English",
+    "model": "'"$MODEL"'"
+  }')
+code=$(echo "$body" | tail -1)
+body=$(echo "$body")
+check "POST /translate" "$code" 200 "$body"
+
+# ── POST /code/explain ───────────────────────────────────────────────────────
+body=$(curl -s -w "\n%{http_code}" -X POST "$BASE_URL/code/explain" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content": "def is_even(n):\n    return n % 2 == 0",
+    "language": "Python",
+    "model": "'"$MODEL"'"
+  }')
+code=$(echo "$body" | tail -1)
+body=$(echo "$body")
+check "POST /code/explain" "$code" 200 "$body"
+
+# ── POST /git/commit-message ─────────────────────────────────────────────────
+body=$(curl -s -w "\n%{http_code}" -X POST "$BASE_URL/git/commit-message" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content": "diff --git a/app.py b/app.py\n+@app.post(\"/summarize\")\n+async def summarize(...):\n+    ...",
+    "model": "'"$MODEL"'"
+  }')
+code=$(echo "$body" | tail -1)
+body=$(echo "$body")
+check "POST /git/commit-message" "$code" 200 "$body"
+
+# ── POST /extract/actions ────────────────────────────────────────────────────
+body=$(curl -s -w "\n%{http_code}" -X POST "$BASE_URL/extract/actions" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content": "Action items: 1) finalize roadmap by Thursday, 2) prepare demo, 3) schedule kickoff with ops team.",
+    "model": "'"$MODEL"'"
+  }')
+code=$(echo "$body" | tail -1)
+body=$(echo "$body")
+check "POST /extract/actions" "$code" 200 "$body"
+
+# ── POST /rewrite/tone ───────────────────────────────────────────────────────
+body=$(curl -s -w "\n%{http_code}" -X POST "$BASE_URL/rewrite/tone" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content": "hey can you send me the numbers asap thanks",
+    "target_tone": "formal",
+    "model": "'"$MODEL"'"
+  }')
+code=$(echo "$body" | tail -1)
+body=$(echo "$body")
+check "POST /rewrite/tone" "$code" 200 "$body"
+
+# ── POST /proofread ──────────────────────────────────────────────────────────
+body=$(curl -s -w "\n%{http_code}" -X POST "$BASE_URL/proofread" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content": "The marketing team have finish there draft yestarday.",
+    "model": "'"$MODEL"'"
+  }')
+code=$(echo "$body" | tail -1)
+body=$(echo "$body")
+check "POST /proofread" "$code" 200 "$body"
+
+# ── POST /code/generate-tests ────────────────────────────────────────────────
+body=$(curl -s -w "\n%{http_code}" -X POST "$BASE_URL/code/generate-tests" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content": "def divide(a, b):\n    return a / b",
+    "language": "Python",
+    "framework": "pytest",
+    "model": "'"$MODEL"'"
+  }')
+code=$(echo "$body" | tail -1)
+body=$(echo "$body")
+check "POST /code/generate-tests" "$code" 200 "$body"
+
 # ── GET /jobs ─────────────────────────────────────────────────────────────────
 body=$(curl -s -w "\n%{http_code}" "$BASE_URL/jobs")
 code=$(echo "$body" | tail -1)

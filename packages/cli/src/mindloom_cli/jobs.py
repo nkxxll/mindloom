@@ -50,14 +50,14 @@ class Jobs:
         raise error_type(status_code=response.status_code, message=error_message)
 
     def get_jobs(self) -> list[JobResponse]:
-        response = httpx.get(f"{self.config.host}/jobs")
+        response = httpx.get(f"{self.config.host}/jobs", timeout=None)
         if response.status_code == 200:
             jobs = [JobResponse.model_validate(u) for u in response.json()]
             return jobs
         raise GetJobsError(status_code=response.status_code)
 
     def get_job_by_id(self, job_id: int) -> JobResponse:
-        response = httpx.get(f"{self.config.host}/jobs/{job_id}")
+        response = httpx.get(f"{self.config.host}/jobs/{job_id}", timeout=None)
         return self._parse_job_response(
             response,
             error_type=GetJobByIdError,
@@ -65,7 +65,7 @@ class Jobs:
         )
 
     def restart_by_id(self, job_id: int) -> JobResponse:
-        response = httpx.post(f"{self.config.host}/jobs/{job_id}/restart")
+        response = httpx.post(f"{self.config.host}/jobs/{job_id}/restart", timeout=None)
         return self._parse_job_response(
             response,
             error_type=RestartJobError,

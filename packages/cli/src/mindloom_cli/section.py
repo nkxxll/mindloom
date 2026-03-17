@@ -25,6 +25,13 @@ class ImproveSectionError(SectionRequestError):
         super().__init__(status_code=status_code, message=message)
 
 
+class ExtendSectionError(SectionRequestError):
+    def __init__(
+        self, status_code: int, message: str = "Failed to extend section: non 200 status code."
+    ):
+        super().__init__(status_code=status_code, message=message)
+
+
 def parse_line_range(line_range: str, total_lines: int) -> tuple[int, int]:
     parts = line_range.split(":", maxsplit=1)
     if len(parts) != 2:
@@ -56,7 +63,7 @@ class Section:
         *,
         error_type: type[SectionRequestError],
     ) -> SectionResponse:
-        response = httpx.post(f"{self.config.host.rstrip('/')}{endpoint}", json=payload)
+        response = httpx.post(f"{self.config.host.rstrip('/')}{endpoint}", json=payload, timeout=None)
         if response.status_code == 200:
             return SectionResponse.model_validate(response.json())
         body = response.text.strip() or "<empty response body>"
@@ -92,5 +99,26 @@ class Section:
             payload["model"] = model
         result = self._request_section_response(
             "/section/improve", payload, error_type=ImproveSectionError
+        )
+        return result.content
+
+    def extend_section(
+        self,
+        content: str,
+        file_path: Path,
+        start: int,
+        end: int,
+        model: str | None = None,
+    ) -> str:
+        payload: dict[str, object] = {
+            "start": start,
+            "end": end,
+            "content": content,
+            "file_path": str(file_path),
+        }
+        if model is not None:
+            payload["model"] = model
+        result = self._request_section_response(
+            "/section/extend", payload, error_type=ExtendSectionError
         )
         return result.content

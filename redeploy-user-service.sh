@@ -1,12 +1,13 @@
 #!/bin/bash
 set -e
 
+cp mindloom.user.service ~/.config/systemd/user/mindloom.service
+
+echo "Reloading mindloom service..."
+systemctl --user daemon-reload
+
 echo "Stopping mindloom service..."
 systemctl --user stop mindloom
-
-echo "Copying files to ~/git/mindloom..."
-mkdir -p ~/git/mindloom
-rsync -av --delete --exclude='.git' --exclude='.venv' --exclude='__pycache__' . ~/git/mindloom/
 
 echo "Starting mindloom service..."
 systemctl --user start mindloom

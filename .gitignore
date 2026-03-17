@@ -11,3 +11,6 @@ wheels/
 
 # Local environment config
 .env
+
+app.log
+sql_app.db

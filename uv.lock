@@ -340,6 +340,7 @@ dependencies = [
     { name = "click" },
     { name = "httpx" },
     { name = "mindloom-core" },
+    { name = "rich" },
 ]
 
 [package.metadata]
@@ -347,6 +348,7 @@ requires-dist = [
     { name = "click", specifier = ">=8.0" },
     { name = "httpx", specifier = ">=0.28" },
     { name = "mindloom-core", editable = "packages/core" },
+    { name = "rich", specifier = ">=14.3.3" },
 ]
 
 [[package]]

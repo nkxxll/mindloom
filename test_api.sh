@@ -93,6 +93,27 @@ code=$(echo "$body" | tail -1)
 body=$(echo "$body")
 check "POST /email/write" "$code" 200 "$body"
 
+# ── GET /jobs ─────────────────────────────────────────────────────────────────
+body=$(curl -s -w "\n%{http_code}" "$BASE_URL/jobs")
+code=$(echo "$body" | tail -1)
+body=$(echo "$body" | sed '$d')
+check "GET /jobs" "$code" 200 "$body"
+
+# ── GET /jobs/{id} — pick first COMPLETED job and fetch its answer ───────────
+job_id=$(echo "$body" | jq -r '[.[] | select(.status == "COMPLETED")][0].id // empty')
+if [ -n "$job_id" ]; then
+  body=$(curl -s -w "\n%{http_code}" "$BASE_URL/jobs/$job_id")
+  code=$(echo "$body" | tail -1)
+  body=$(echo "$body" | sed '$d')
+  check "GET /jobs/$job_id (COMPLETED)" "$code" 200 "$body"
+  echo "── Answer ──"
+  echo "$body" | jq -r '.result'
+  echo ""
+else
+  echo -e "${RED}SKIP${NC} No COMPLETED job found to fetch"
+  ((FAIL++))
+fi
+
 # ── Summary ──────────────────────────────────────────────────────────────────
 echo ""
 echo "Results: ${PASS} passed, ${FAIL} failed"

@@ -8,6 +8,7 @@ from typing import Any
 
 from cassandra.auth import PlainTextAuthProvider
 from cassandra.cluster import Cluster, Session as CassandraSession
+from cassandra.policies import WhiteListRoundRobinPolicy
 from cassandra.query import dict_factory
 from dotenv import load_dotenv
 
@@ -99,6 +100,7 @@ def init_db() -> CassandraSession:
         contact_points=SETTINGS.contact_points,
         port=SETTINGS.port,
         auth_provider=auth_provider,
+        load_balancing_policy=WhiteListRoundRobinPolicy(SETTINGS.contact_points),
     )
     session = cluster.connect()
     session.row_factory = dict_factory

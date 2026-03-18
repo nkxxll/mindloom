@@ -7,7 +7,8 @@ from datetime import datetime, timezone
 from typing import Any
 
 from cassandra.auth import PlainTextAuthProvider
-from cassandra.cluster import Cluster, Session as CassandraSession
+from cassandra.cluster import Cluster
+from cassandra.cluster import Session as CassandraSession
 from cassandra.policies import AddressTranslator, WhiteListRoundRobinPolicy
 from cassandra.query import dict_factory
 from dotenv import load_dotenv
@@ -32,6 +33,7 @@ class _LocalAddressTranslator(AddressTranslator):
     def translate(self, addr: str) -> str:
         return self._target
 
+
 load_dotenv()
 
 
@@ -44,6 +46,12 @@ class CassandraSettings:
     keyspace: str
     table: str
     replication_factor: int
+
+
+@dataclass(frozen=True)
+class WorkerSettings:
+    poll_interval_seconds: int
+    enabled: bool
 
 
 def _optional_env(name: str) -> str | None:
@@ -66,7 +74,10 @@ def _read_settings() -> CassandraSettings:
 
     keyspace = os.getenv("CASSANDRA_KEYSPACE", "mindloom")
     table = os.getenv("CASSANDRA_TABLE", "jobs")
-    for identifier_name, identifier_value in (("CASSANDRA_KEYSPACE", keyspace), ("CASSANDRA_TABLE", table)):
+    for identifier_name, identifier_value in (
+        ("CASSANDRA_KEYSPACE", keyspace),
+        ("CASSANDRA_TABLE", table),
+    ):
         if not _IDENTIFIER_PATTERN.match(identifier_value):
             msg = (
                 f"{identifier_name} must match pattern "
@@ -91,7 +102,15 @@ def _read_settings() -> CassandraSettings:
     )
 
 
+def _read_worker_settings() -> WorkerSettings:
+    return WorkerSettings(
+        poll_interval_seconds=int(os.getenv("WORKER_POLL_INTERVAL_SECONDS", "600")),
+        enabled=os.getenv("WORKER_ENABLED", "true").lower() in ("true", "1", "yes"),
+    )
+
+
 SETTINGS = _read_settings()
+WORKER_SETTINGS = _read_worker_settings()
 
 cluster: Cluster | None = None
 session: CassandraSession | None = None
@@ -135,10 +154,22 @@ def init_db() -> CassandraSession:
             result text,
             status text,
             created_at timestamp,
-            updated_at timestamp
+            updated_at timestamp,
+            dependencies text
         )
         """
     )
+    
+    # Migration: Add dependencies column if it doesn't exist
+    try:
+        session.execute(
+            f"ALTER TABLE {SETTINGS.table} ADD dependencies text"
+        )
+        logger.info("Added 'dependencies' column to %s table", SETTINGS.table)
+    except Exception:
+        # Column already exists, ignore the error
+        pass
+    
     logger.info(
         "Connected to Cassandra at %s:%s (%s.%s)",
         ",".join(SETTINGS.contact_points),
@@ -173,6 +204,7 @@ def _row_to_job(row: dict[str, Any]) -> Job:
         status=str(row["status"]),
         created_at=row["created_at"],
         updated_at=row["updated_at"],
+        dependencies=row.get("dependencies"),
     )
 
 
@@ -181,21 +213,79 @@ def _new_job_id() -> int:
 
 
 def create_job(db: CassandraSession, job_data: JobCreate) -> Job:
+    """Create a new job in the database.
+    
+    If the job content contains template placeholders ({{job_id}}), they are
+    extracted and stored as dependencies. The job status is set to WAITING_FOR
+    if dependencies exist, otherwise PENDING.
+    
+    Args:
+        db: Database session
+        job_data: Job creation data
+        
+    Returns:
+        Created Job object
+        
+    Raises:
+        ValueError: If template validation fails or circular dependencies detected
+    """
+    import json
+    from .template_parser import extract_job_ids, validate_template
+    
     created_at = datetime.now(timezone.utc)
+    
+    # Extract dependencies from content
+    dependency_ids = []
+    dependencies_json = None
+    initial_status = Status.PENDING.value
+    
+    if job_data.content:
+        # Validate template syntax
+        error = validate_template(job_data.content)
+        if error:
+            raise ValueError(f"Invalid template: {error}")
+        
+        # Extract job IDs
+        dependency_ids = extract_job_ids(job_data.content)
+        
+        if dependency_ids:
+            # Validate that referenced jobs exist
+            for dep_id in dependency_ids:
+                dep_job = get_job_by_id(db, dep_id)
+                if dep_job is None:
+                    raise ValueError(f"Dependency job {dep_id} does not exist")
+            
+            # Store dependencies as JSON
+            dependencies_json = json.dumps(dependency_ids)
+            initial_status = Status.WAITING_FOR.value
+            
+            logger.info(
+                "Creating job with %d dependencies: %s",
+                len(dependency_ids),
+                dependency_ids
+            )
+    
+    # Allow explicit dependencies from job_data (for direct API use)
+    if job_data.dependencies:
+        dependencies_json = job_data.dependencies
+        initial_status = Status.WAITING_FOR.value
+    
     job = Job(
         id=_new_job_id(),
         task_type=str(job_data.task_type.value),
         content=job_data.content,
         result=None,
-        status=Status.PENDING.value,
+        status=initial_status,
         created_at=created_at,
         updated_at=created_at,
+        dependencies=dependencies_json,
     )
+    
     db.execute(
         f"""
         INSERT INTO {SETTINGS.table}
-        (id, task_type, content, result, status, created_at, updated_at)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        (id, task_type, content, result, status, created_at, updated_at, dependencies)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """,
         (
             job.id,
@@ -205,6 +295,7 @@ def create_job(db: CassandraSession, job_data: JobCreate) -> Job:
             job.status,
             job.created_at,
             job.updated_at,
+            job.dependencies,
         ),
     )
     return job
@@ -239,7 +330,7 @@ def update_job_status(
 def get_all_jobs(db: CassandraSession) -> list[Job]:
     rows = db.execute(
         f"""
-        SELECT id, task_type, content, result, status, created_at, updated_at
+        SELECT id, task_type, content, result, status, created_at, updated_at, dependencies
         FROM {SETTINGS.table}
         """
     )
@@ -250,7 +341,7 @@ def get_all_jobs(db: CassandraSession) -> list[Job]:
 def get_job_by_id(db: CassandraSession, job_id: int) -> Job | None:
     row = db.execute(
         f"""
-        SELECT id, task_type, content, result, status, created_at, updated_at
+        SELECT id, task_type, content, result, status, created_at, updated_at, dependencies
         FROM {SETTINGS.table}
         WHERE id = %s
         """,

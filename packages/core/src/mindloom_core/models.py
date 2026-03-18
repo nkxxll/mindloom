@@ -16,11 +16,12 @@ class SectionRequest(BaseModel):
 
 
 class Status(StrEnum):
-    # Common statuses: "pending", "running", "completed", "failed"
+    # Common statuses: "pending", "running", "completed", "failed", "waiting_for"
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
+    WAITING_FOR = "waiting_for"
 
 
 class Job(BaseModel):
@@ -31,11 +32,13 @@ class Job(BaseModel):
     status: str
     created_at: datetime
     updated_at: Optional[datetime]
+    dependencies: Optional[str] = None
 
 
 class JobCreate(BaseModel):
     task_type: EthemeralTaskType | ConversationTaskType
     content: str
+    dependencies: Optional[str] = None
 
 
 class JobResponse(BaseModel):
@@ -46,6 +49,7 @@ class JobResponse(BaseModel):
     status: str
     created_at: datetime
     updated_at: Optional[datetime]
+    dependencies: Optional[str] = None
 
 
 class SectionResponse(BaseModel):

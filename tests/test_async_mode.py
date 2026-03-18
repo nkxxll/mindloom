@@ -8,7 +8,7 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-from mindloom.models import EthemeralTaskType, Status
+from mindloom_core.models import Status
 
 app_module = importlib.import_module("mindloom.app")
 
@@ -87,7 +87,7 @@ def test_async_mode_returns_immediately(client):
 
     assert response.status_code == 200
     data = response.json()
-    
+
     assert data["status"] == Status.PENDING
     assert "job_id" in data
     assert data["content"] is None

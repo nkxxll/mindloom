@@ -13,7 +13,7 @@ from cassandra.policies import AddressTranslator, WhiteListRoundRobinPolicy
 from cassandra.query import dict_factory
 from dotenv import load_dotenv
 
-from .models import Job, JobCreate, Status
+from mindloom_core.models import Job, JobCreate, Status
 
 logger = logging.getLogger(__name__)
 
@@ -159,7 +159,7 @@ def init_db() -> CassandraSession:
         )
         """
     )
-    
+
     # Migration: Add dependencies column if it doesn't exist
     try:
         session.execute(
@@ -169,7 +169,7 @@ def init_db() -> CassandraSession:
     except Exception:
         # Column already exists, ignore the error
         pass
-    
+
     logger.info(
         "Connected to Cassandra at %s:%s (%s.%s)",
         ",".join(SETTINGS.contact_points),
@@ -214,62 +214,62 @@ def _new_job_id() -> int:
 
 def create_job(db: CassandraSession, job_data: JobCreate) -> Job:
     """Create a new job in the database.
-    
+
     If the job content contains template placeholders ({{job_id}}), they are
     extracted and stored as dependencies. The job status is set to WAITING_FOR
     if dependencies exist, otherwise PENDING.
-    
+
     Args:
         db: Database session
         job_data: Job creation data
-        
+
     Returns:
         Created Job object
-        
+
     Raises:
         ValueError: If template validation fails or circular dependencies detected
     """
     import json
     from .template_parser import extract_job_ids, validate_template
-    
+
     created_at = datetime.now(timezone.utc)
-    
+
     # Extract dependencies from content
     dependency_ids = []
     dependencies_json = None
     initial_status = Status.PENDING.value
-    
+
     if job_data.content:
         # Validate template syntax
         error = validate_template(job_data.content)
         if error:
             raise ValueError(f"Invalid template: {error}")
-        
+
         # Extract job IDs
         dependency_ids = extract_job_ids(job_data.content)
-        
+
         if dependency_ids:
             # Validate that referenced jobs exist
             for dep_id in dependency_ids:
                 dep_job = get_job_by_id(db, dep_id)
                 if dep_job is None:
                     raise ValueError(f"Dependency job {dep_id} does not exist")
-            
+
             # Store dependencies as JSON
             dependencies_json = json.dumps(dependency_ids)
             initial_status = Status.WAITING_FOR.value
-            
+
             logger.info(
                 "Creating job with %d dependencies: %s",
                 len(dependency_ids),
                 dependency_ids
             )
-    
+
     # Allow explicit dependencies from job_data (for direct API use)
     if job_data.dependencies:
         dependencies_json = job_data.dependencies
         initial_status = Status.WAITING_FOR.value
-    
+
     job = Job(
         id=_new_job_id(),
         task_type=str(job_data.task_type.value),
@@ -280,7 +280,7 @@ def create_job(db: CassandraSession, job_data: JobCreate) -> Job:
         updated_at=created_at,
         dependencies=dependencies_json,
     )
-    
+
     db.execute(
         f"""
         INSERT INTO {SETTINGS.table}

@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from mindloom.models import EthemeralTaskType, Status
+from mindloom_core.models import EthemeralTaskType, Status
 
 app_module = importlib.import_module("mindloom.app")
 

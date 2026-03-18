@@ -3,7 +3,7 @@ from logging import getLogger
 import ollama
 
 from .defaults import DEFAULT_MODEL
-from .models import Model
+from mindloom_core.models import Model
 
 logger = getLogger(__name__)
 

@@ -8,7 +8,7 @@ import httpx
 from rich.console import Console
 
 from mindloom_cli.config import get_config, initialize_config
-from mindloom_cli.display import render_jobs_table
+from mindloom_cli.display import render_jobs_table, render_single_job
 from mindloom_cli.fileio import read_file, write_file
 
 cfg = get_config()
@@ -131,8 +131,14 @@ def ask(question: str, markdown: bool, model: str | None):
 
 @cli.group(invoke_without_command=True)
 @click.argument("id", required=False, type=click.INT)
+@click.option(
+    "-r",
+    "--raw",
+    is_flag=True,
+    help="Output only the result field as plain text (no formatting).",
+)
 @click.pass_context
-def jobs(ctx: click.Context, id: int | None):
+def jobs(ctx: click.Context, id: int | None, raw: bool):
     if ctx.invoked_subcommand is not None:
         return
 
@@ -142,7 +148,8 @@ def jobs(ctx: click.Context, id: int | None):
     if id is not None:
         try:
             job = with_response_spinner(j.get_job_by_id, id)
-            render_jobs_table([job], title=f"Job {id}")
+            is_piped = not sys.stdout.isatty()
+            render_single_job(job, raw=raw, is_piped=is_piped)
         except GetJobByIdError as e:
             raise StyledError(f"Job {id} not found (status code: {e.status_code})")
     else:

@@ -1,5 +1,5 @@
 import httpx
-from mindloom_core.models import SectionResponse
+from mindloom_core.models import SectionResponse, TaskResponse
 
 
 class RewriteRequestError(Exception):
@@ -25,13 +25,18 @@ class Rewrite:
         content: str,
         target_tone: str,
         model: str | None = None,
-    ) -> str:
-        payload: dict[str, object] = {"content": content, "target_tone": target_tone}
+        async_mode: bool = False,
+    ) -> str | int:
+        payload: dict[str, object] = {"content": content, "target_tone": target_tone, "async_mode": async_mode}
         if model is not None:
             payload["model"] = model
         response = httpx.post(f"{self.config.host.rstrip('/')}/rewrite/tone", json=payload, timeout=None)
         if response.status_code == 200:
-            result = SectionResponse.model_validate(response.json())
+            data = response.json()
+            if "job_id" in data:
+                result = TaskResponse.model_validate(data)
+                return result.job_id
+            result = SectionResponse.model_validate(data)
             return result.content
         body = response.text.strip() or "<empty response body>"
         raise RewriteToneError(

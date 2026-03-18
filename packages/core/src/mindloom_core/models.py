@@ -13,6 +13,7 @@ class SectionRequest(BaseModel):
     content: str
     file_path: str
     model: Optional[Model] = None
+    async_mode: bool = False
 
 
 class Status(StrEnum):
@@ -57,21 +58,32 @@ class SectionResponse(BaseModel):
     length: int
 
 
+class TaskResponse(BaseModel):
+    job_id: int
+    status: Status
+    content: Optional[str] = None
+    length: Optional[int] = None
+    created_at: datetime
+
+
 class FileRequest(BaseModel):
     content: str
     file_path: str
     model: Optional[Model] = None
+    async_mode: bool = False
 
 
 class EmailRequest(BaseModel):
     content: str
     model: Optional[Model] = None
+    async_mode: bool = False
 
 
 class SummarizeRequest(BaseModel):
     content: str
     max_length: Optional[int] = None
     model: Optional[Model] = None
+    async_mode: bool = False
 
 
 class TranslateRequest(BaseModel):
@@ -79,33 +91,39 @@ class TranslateRequest(BaseModel):
     target_language: str
     source_language: Optional[str] = None
     model: Optional[Model] = None
+    async_mode: bool = False
 
 
 class ExplainCodeRequest(BaseModel):
     content: str
     language: Optional[str] = None
     model: Optional[Model] = None
+    async_mode: bool = False
 
 
 class CommitMessageRequest(BaseModel):
     content: str
     model: Optional[Model] = None
+    async_mode: bool = False
 
 
 class ExtractActionsRequest(BaseModel):
     content: str
     model: Optional[Model] = None
+    async_mode: bool = False
 
 
 class RewriteToneRequest(BaseModel):
     content: str
     target_tone: str
     model: Optional[Model] = None
+    async_mode: bool = False
 
 
 class ProofreadRequest(BaseModel):
     content: str
     model: Optional[Model] = None
+    async_mode: bool = False
 
 
 class GenerateTestsRequest(BaseModel):
@@ -113,12 +131,14 @@ class GenerateTestsRequest(BaseModel):
     language: Optional[str] = None
     framework: Optional[str] = None
     model: Optional[Model] = None
+    async_mode: bool = False
 
 
 class AskRequest(BaseModel):
     question: str
     markdown: bool = False
     model: Optional[Model] = None
+    async_mode: bool = False
 
 
 class ConversationTaskType(Enum):

@@ -92,6 +92,15 @@ def resolve_content_input(text: str | None, input_file: Path | None) -> str:
     raise click.UsageError("No input provided. Use --text, --file, or stdin.")
 
 
+def handle_async_result(result: str | int) -> None:
+    """Handle result that could be content (sync) or job_id (async)."""
+    if isinstance(result, int):
+        click.secho(f"Job started with ID: {result}", fg="green")
+        click.secho(f"Check status with: mindloom jobs {result}", fg="cyan")
+    else:
+        click.echo(result)
+
+
 @click.group()
 def cli():
     pass
@@ -121,12 +130,17 @@ def health():
     help="Format the answer as a Markdown article for note-taking.",
 )
 @click.option("--model", default=None, help="Optional model override.")
-def ask(question: str, markdown: bool, model: str | None):
+@click.option("--async", "async_mode", is_flag=True, help="Run task asynchronously and return job ID.")
+def ask(question: str, markdown: bool, model: str | None, async_mode: bool):
     from mindloom_cli.ask import Ask
 
     a = Ask(cfg)
-    result = with_response_spinner(a.ask, question, markdown=markdown, model=model)
-    click.echo(result)
+    result = with_response_spinner(a.ask, question, markdown=markdown, model=model, async_mode=async_mode)
+    if isinstance(result, int):
+        click.secho(f"Job started with ID: {result}", fg="green")
+        click.secho(f"Check status with: mindloom jobs {result}", fg="cyan")
+    else:
+        click.echo(result)
 
 
 @cli.group(invoke_without_command=True)
@@ -185,14 +199,19 @@ def init():
     "file_path", type=click.Path(exists=True, dir_okay=False, path_type=Path)
 )
 @click.option("--model", default=None, help="Optional model override.")
-def file(file_path: Path, model: str | None):
+@click.option("--async", "async_mode", is_flag=True, help="Run task asynchronously and return job ID.")
+def file(file_path: Path, model: str | None, async_mode: bool):
     from mindloom_cli.section import Section
 
     s = Section(cfg)
     content = read_file(file_path)
-    result = with_response_spinner(s.improve_file, content, file_path, model)
-    write_file(file_path, result)
-    click.secho(f"Updated {file_path}", fg="green")
+    result = with_response_spinner(s.improve_file, content, file_path, model, async_mode)
+    if isinstance(result, int):
+        click.secho(f"Job started with ID: {result}", fg="green")
+        click.secho(f"Check status with: mindloom jobs {result}", fg="cyan")
+    else:
+        write_file(file_path, result)
+        click.secho(f"Updated {file_path}", fg="green")
 
 
 @cli.group(cls=DefaultCommandGroup, default_command="improve")
@@ -211,16 +230,21 @@ def section():
     help="Optional line range in START:END format (1-based, inclusive).",
 )
 @click.option("--model", default=None, help="Optional model override.")
-def section_improve(file_path: Path, line_range: str | None, model: str | None):
+@click.option("--async", "async_mode", is_flag=True, help="Run task asynchronously and return job ID.")
+def section_improve(file_path: Path, line_range: str | None, model: str | None, async_mode: bool):
     from mindloom_cli.section import Section, parse_line_range
 
     s = Section(cfg)
     content = read_file(file_path)
 
     if line_range is None:
-        result = with_response_spinner(s.improve_file, content, file_path, model)
-        write_file(file_path, result)
-        click.secho(f"Updated {file_path}", fg="green")
+        result = with_response_spinner(s.improve_file, content, file_path, model, async_mode)
+        if isinstance(result, int):
+            click.secho(f"Job started with ID: {result}", fg="green")
+            click.secho(f"Check status with: mindloom jobs {result}", fg="cyan")
+        else:
+            write_file(file_path, result)
+            click.secho(f"Updated {file_path}", fg="green")
         return
 
     lines = content.splitlines(keepends=True)
@@ -236,11 +260,15 @@ def section_improve(file_path: Path, line_range: str | None, model: str | None):
 
     selected_content = "".join(lines[start - 1 : end])
     improved = with_response_spinner(
-        s.improve_section, selected_content, file_path, start, end, model
+        s.improve_section, selected_content, file_path, start, end, model, async_mode
     )
-    updated_content = "".join(lines[: start - 1]) + improved + "".join(lines[end:])
-    write_file(file_path, updated_content)
-    click.secho(f"Updated lines {start}:{end} in {file_path}", fg="green")
+    if isinstance(improved, int):
+        click.secho(f"Job started with ID: {improved}", fg="green")
+        click.secho(f"Check status with: mindloom jobs {improved}", fg="cyan")
+    else:
+        updated_content = "".join(lines[: start - 1]) + improved + "".join(lines[end:])
+        write_file(file_path, updated_content)
+        click.secho(f"Updated lines {start}:{end} in {file_path}", fg="green")
 
 
 @section.command("extend")
@@ -254,7 +282,8 @@ def section_improve(file_path: Path, line_range: str | None, model: str | None):
     help="Optional line range in START:END format (1-based, inclusive).",
 )
 @click.option("--model", default=None, help="Optional model override.")
-def section_extend(file_path: Path, line_range: str | None, model: str | None):
+@click.option("--async", "async_mode", is_flag=True, help="Run task asynchronously and return job ID.")
+def section_extend(file_path: Path, line_range: str | None, model: str | None, async_mode: bool):
     from mindloom_cli.section import Section, parse_line_range
 
     s = Section(cfg)
@@ -273,11 +302,15 @@ def section_extend(file_path: Path, line_range: str | None, model: str | None):
 
     selected_content = "".join(lines[start - 1 : end])
     extended = with_response_spinner(
-        s.extend_section, selected_content, file_path, start, end, model
+        s.extend_section, selected_content, file_path, start, end, model, async_mode
     )
-    updated_content = "".join(lines[: start - 1]) + extended + "".join(lines[end:])
-    write_file(file_path, updated_content)
-    click.secho(f"Extended lines {start}:{end} in {file_path}", fg="green")
+    if isinstance(extended, int):
+        click.secho(f"Job started with ID: {extended}", fg="green")
+        click.secho(f"Check status with: mindloom jobs {extended}", fg="cyan")
+    else:
+        updated_content = "".join(lines[: start - 1]) + extended + "".join(lines[end:])
+        write_file(file_path, updated_content)
+        click.secho(f"Extended lines {start}:{end} in {file_path}", fg="green")
 
 
 @cli.group()
@@ -288,25 +321,27 @@ def email():
 @email.command("improve")
 @with_content_input
 @click.option("--model", default=None, help="Optional model override.")
-def email_improve(text: str | None, input_file: Path | None, model: str | None):
+@click.option("--async", "async_mode", is_flag=True, help="Run task asynchronously and return job ID.")
+def email_improve(text: str | None, input_file: Path | None, model: str | None, async_mode: bool):
     from mindloom_cli.email import Email
 
     e = Email(cfg)
     content = resolve_content_input(text, input_file)
-    result = with_response_spinner(e.improve_email, content, model)
-    click.echo(result)
+    result = with_response_spinner(e.improve_email, content, model, async_mode)
+    handle_async_result(result)
 
 
 @email.command("write")
 @with_content_input
 @click.option("--model", default=None, help="Optional model override.")
-def email_write(text: str | None, input_file: Path | None, model: str | None):
+@click.option("--async", "async_mode", is_flag=True, help="Run task asynchronously and return job ID.")
+def email_write(text: str | None, input_file: Path | None, model: str | None, async_mode: bool):
     from mindloom_cli.email import Email
 
     e = Email(cfg)
     content = resolve_content_input(text, input_file)
-    result = with_response_spinner(e.write_email, content, model)
-    click.echo(result)
+    result = with_response_spinner(e.write_email, content, model, async_mode)
+    handle_async_result(result)
 
 
 @cli.group()
@@ -323,20 +358,22 @@ def text():
     help="Optional maximum length hint for summarization.",
 )
 @click.option("--model", default=None, help="Optional model override.")
+@click.option("--async", "async_mode", is_flag=True, help="Run task asynchronously and return job ID.")
 def text_summarize(
     text: str | None,
     input_file: Path | None,
     max_length: int | None,
     model: str | None,
+    async_mode: bool,
 ):
     from mindloom_cli.text import Text
 
     t = Text(cfg)
     content = resolve_content_input(text, input_file)
     result = with_response_spinner(
-        t.summarize, content, max_length=max_length, model=model
+        t.summarize, content, max_length=max_length, model=model, async_mode=async_mode
     )
-    click.echo(result)
+    handle_async_result(result)
 
 
 @text.command("translate")
@@ -344,12 +381,14 @@ def text_summarize(
 @click.option("--target-language", required=True, help="Target language for translation.")
 @click.option("--source-language", default=None, help="Optional source language.")
 @click.option("--model", default=None, help="Optional model override.")
+@click.option("--async", "async_mode", is_flag=True, help="Run task asynchronously and return job ID.")
 def text_translate(
     text: str | None,
     input_file: Path | None,
     target_language: str,
     source_language: str | None,
     model: str | None,
+    async_mode: bool,
 ):
     from mindloom_cli.text import Text
 
@@ -361,20 +400,22 @@ def text_translate(
         target_language=target_language,
         source_language=source_language,
         model=model,
+        async_mode=async_mode,
     )
-    click.echo(result)
+    handle_async_result(result)
 
 
 @text.command("proofread")
 @with_content_input
 @click.option("--model", default=None, help="Optional model override.")
-def text_proofread(text: str | None, input_file: Path | None, model: str | None):
+@click.option("--async", "async_mode", is_flag=True, help="Run task asynchronously and return job ID.")
+def text_proofread(text: str | None, input_file: Path | None, model: str | None, async_mode: bool):
     from mindloom_cli.text import Text
 
     t = Text(cfg)
     content = resolve_content_input(text, input_file)
-    result = with_response_spinner(t.proofread, content, model=model)
-    click.echo(result)
+    result = with_response_spinner(t.proofread, content, model=model, async_mode=async_mode)
+    handle_async_result(result)
 
 
 @cli.group()
@@ -386,20 +427,22 @@ def code():
 @with_content_input
 @click.option("--language", default=None, help="Optional programming language hint.")
 @click.option("--model", default=None, help="Optional model override.")
+@click.option("--async", "async_mode", is_flag=True, help="Run task asynchronously and return job ID.")
 def code_explain(
     text: str | None,
     input_file: Path | None,
     language: str | None,
     model: str | None,
+    async_mode: bool,
 ):
     from mindloom_cli.code import Code
 
     c = Code(cfg)
     content = resolve_content_input(text, input_file)
     result = with_response_spinner(
-        c.explain_code, content, language=language, model=model
+        c.explain_code, content, language=language, model=model, async_mode=async_mode
     )
-    click.echo(result)
+    handle_async_result(result)
 
 
 @code.command("tests")
@@ -407,21 +450,23 @@ def code_explain(
 @click.option("--language", default=None, help="Optional programming language hint.")
 @click.option("--framework", default=None, help="Optional test framework hint.")
 @click.option("--model", default=None, help="Optional model override.")
+@click.option("--async", "async_mode", is_flag=True, help="Run task asynchronously and return job ID.")
 def code_tests(
     text: str | None,
     input_file: Path | None,
     language: str | None,
     framework: str | None,
     model: str | None,
+    async_mode: bool,
 ):
     from mindloom_cli.code import Code
 
     c = Code(cfg)
     content = resolve_content_input(text, input_file)
     result = with_response_spinner(
-        c.generate_tests, content, language=language, framework=framework, model=model
+        c.generate_tests, content, language=language, framework=framework, model=model, async_mode=async_mode
     )
-    click.echo(result)
+    handle_async_result(result)
 
 
 @cli.group()
@@ -432,13 +477,14 @@ def git():
 @git.command("commit-message")
 @with_content_input
 @click.option("--model", default=None, help="Optional model override.")
-def git_commit_message(text: str | None, input_file: Path | None, model: str | None):
+@click.option("--async", "async_mode", is_flag=True, help="Run task asynchronously and return job ID.")
+def git_commit_message(text: str | None, input_file: Path | None, model: str | None, async_mode: bool):
     from mindloom_cli.git import Git
 
     g = Git(cfg)
     content = resolve_content_input(text, input_file)
-    result = with_response_spinner(g.generate_commit_message, content, model=model)
-    click.echo(result)
+    result = with_response_spinner(g.generate_commit_message, content, model=model, async_mode=async_mode)
+    handle_async_result(result)
 
 
 @cli.group()
@@ -449,13 +495,14 @@ def extract():
 @extract.command("actions")
 @with_content_input
 @click.option("--model", default=None, help="Optional model override.")
-def extract_actions(text: str | None, input_file: Path | None, model: str | None):
+@click.option("--async", "async_mode", is_flag=True, help="Run task asynchronously and return job ID.")
+def extract_actions(text: str | None, input_file: Path | None, model: str | None, async_mode: bool):
     from mindloom_cli.extract import Extract
 
     e = Extract(cfg)
     content = resolve_content_input(text, input_file)
-    result = with_response_spinner(e.extract_actions, content, model=model)
-    click.echo(result)
+    result = with_response_spinner(e.extract_actions, content, model=model, async_mode=async_mode)
+    handle_async_result(result)
 
 
 @cli.group()
@@ -467,20 +514,22 @@ def rewrite():
 @with_content_input
 @click.option("--target-tone", required=True, help="Target tone to rewrite into.")
 @click.option("--model", default=None, help="Optional model override.")
+@click.option("--async", "async_mode", is_flag=True, help="Run task asynchronously and return job ID.")
 def rewrite_tone(
     text: str | None,
     input_file: Path | None,
     target_tone: str,
     model: str | None,
+    async_mode: bool,
 ):
     from mindloom_cli.rewrite import Rewrite
 
     r = Rewrite(cfg)
     content = resolve_content_input(text, input_file)
     result = with_response_spinner(
-        r.rewrite_tone, content, target_tone=target_tone, model=model
+        r.rewrite_tone, content, target_tone=target_tone, model=model, async_mode=async_mode
     )
-    click.echo(result)
+    handle_async_result(result)
 
 
 def main():

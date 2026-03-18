@@ -2,7 +2,7 @@ import logging
 from contextlib import asynccontextmanager
 
 from cassandra.cluster import Session as CassandraSession
-from fastapi import Depends, FastAPI, Response, status
+from fastapi import BackgroundTasks, Depends, FastAPI, Response, status
 from fastapi.exceptions import HTTPException
 
 from . import db as database
@@ -24,6 +24,7 @@ from .models import (
     SectionResponse,
     Status,
     SummarizeRequest,
+    TaskResponse,
     TranslateRequest,
     get_system_message,
     get_user_message,
@@ -193,20 +194,56 @@ def _run_task(task_type: EthemeralTaskType, content: str, model) -> SectionRespo
     return SectionResponse(content=result, length=len(result))
 
 
+def _execute_async_job(
+    db: CassandraSession, job_id: int, task_type: EthemeralTaskType, content: str, model
+) -> None:
+    """Execute a job asynchronously in the background."""
+    try:
+        database.update_job_status(db, job_id, Status.RUNNING)
+        result = _run_task(task_type, content, model)
+        database.update_job_status(db, job_id, Status.COMPLETED, result=result.content)
+        logger.info("Async job %d completed successfully", job_id)
+    except Exception as e:
+        database.update_job_status(db, job_id, Status.FAILED)
+        logger.error("Async job %d failed: %s", job_id, e, exc_info=True)
+
+
 @app.post("/section/improve")
 async def fix_section(
-    section_request: SectionRequest, db: CassandraSession = Depends(get_db)
-) -> SectionResponse:
+    section_request: SectionRequest,
+    background_tasks: BackgroundTasks,
+    db: CassandraSession = Depends(get_db),
+) -> TaskResponse:
     job = database.create_job(
         db,
         JobCreate(task_type=EthemeralTaskType.SECTION, content=section_request.content),
     )
+
+    if section_request.async_mode:
+        background_tasks.add_task(
+            _execute_async_job,
+            db,
+            job.id,
+            EthemeralTaskType.SECTION,
+            section_request.content,
+            section_request.model,
+        )
+        return TaskResponse(
+            job_id=job.id, status=Status.PENDING, created_at=job.created_at
+        )
+
     try:
         result = _run_task(
             EthemeralTaskType.SECTION, section_request.content, section_request.model
         )
         database.update_job_status(db, job.id, Status.COMPLETED, result=result.content)
-        return result
+        return TaskResponse(
+            job_id=job.id,
+            status=Status.COMPLETED,
+            content=result.content,
+            length=result.length,
+            created_at=job.created_at,
+        )
     except Exception:
         database.update_job_status(db, job.id, Status.FAILED)
         raise
@@ -214,14 +251,30 @@ async def fix_section(
 
 @app.post("/section/extend")
 async def extend_section(
-    section_request: SectionRequest, db: CassandraSession = Depends(get_db)
-) -> SectionResponse:
+    section_request: SectionRequest,
+    background_tasks: BackgroundTasks,
+    db: CassandraSession = Depends(get_db),
+) -> TaskResponse:
     job = database.create_job(
         db,
         JobCreate(
             task_type=EthemeralTaskType.SECTION_EXTEND, content=section_request.content
         ),
     )
+
+    if section_request.async_mode:
+        background_tasks.add_task(
+            _execute_async_job,
+            db,
+            job.id,
+            EthemeralTaskType.SECTION_EXTEND,
+            section_request.content,
+            section_request.model,
+        )
+        return TaskResponse(
+            job_id=job.id, status=Status.PENDING, created_at=job.created_at
+        )
+
     try:
         result = _run_task(
             EthemeralTaskType.SECTION_EXTEND,
@@ -229,7 +282,13 @@ async def extend_section(
             section_request.model,
         )
         database.update_job_status(db, job.id, Status.COMPLETED, result=result.content)
-        return result
+        return TaskResponse(
+            job_id=job.id,
+            status=Status.COMPLETED,
+            content=result.content,
+            length=result.length,
+            created_at=job.created_at,
+        )
     except Exception:
         database.update_job_status(db, job.id, Status.FAILED)
         raise
@@ -237,17 +296,39 @@ async def extend_section(
 
 @app.post("/file/improve")
 async def fix_file(
-    file_request: FileRequest, db: CassandraSession = Depends(get_db)
-) -> SectionResponse:
+    file_request: FileRequest,
+    background_tasks: BackgroundTasks,
+    db: CassandraSession = Depends(get_db),
+) -> TaskResponse:
     job = database.create_job(
         db, JobCreate(task_type=EthemeralTaskType.FILE, content=file_request.content)
     )
+
+    if file_request.async_mode:
+        background_tasks.add_task(
+            _execute_async_job,
+            db,
+            job.id,
+            EthemeralTaskType.FILE,
+            file_request.content,
+            file_request.model,
+        )
+        return TaskResponse(
+            job_id=job.id, status=Status.PENDING, created_at=job.created_at
+        )
+
     try:
         result = _run_task(
             EthemeralTaskType.FILE, file_request.content, file_request.model
         )
         database.update_job_status(db, job.id, Status.COMPLETED, result=result.content)
-        return result
+        return TaskResponse(
+            job_id=job.id,
+            status=Status.COMPLETED,
+            content=result.content,
+            length=result.length,
+            created_at=job.created_at,
+        )
     except Exception:
         database.update_job_status(db, job.id, Status.FAILED)
         raise
@@ -255,20 +336,42 @@ async def fix_file(
 
 @app.post("/email/improve")
 async def improve_email(
-    email_request: EmailRequest, db: CassandraSession = Depends(get_db)
-) -> SectionResponse:
+    email_request: EmailRequest,
+    background_tasks: BackgroundTasks,
+    db: CassandraSession = Depends(get_db),
+) -> TaskResponse:
     job = database.create_job(
         db,
         JobCreate(
             task_type=EthemeralTaskType.IMPROVE_EMAIL, content=email_request.content
         ),
     )
+
+    if email_request.async_mode:
+        background_tasks.add_task(
+            _execute_async_job,
+            db,
+            job.id,
+            EthemeralTaskType.IMPROVE_EMAIL,
+            email_request.content,
+            email_request.model,
+        )
+        return TaskResponse(
+            job_id=job.id, status=Status.PENDING, created_at=job.created_at
+        )
+
     try:
         result = _run_task(
             EthemeralTaskType.IMPROVE_EMAIL, email_request.content, email_request.model
         )
         database.update_job_status(db, job.id, Status.COMPLETED, result=result.content)
-        return result
+        return TaskResponse(
+            job_id=job.id,
+            status=Status.COMPLETED,
+            content=result.content,
+            length=result.length,
+            created_at=job.created_at,
+        )
     except Exception:
         database.update_job_status(db, job.id, Status.FAILED)
         raise
@@ -276,20 +379,42 @@ async def improve_email(
 
 @app.post("/email/write")
 async def write_email(
-    email_request: EmailRequest, db: CassandraSession = Depends(get_db)
-) -> SectionResponse:
+    email_request: EmailRequest,
+    background_tasks: BackgroundTasks,
+    db: CassandraSession = Depends(get_db),
+) -> TaskResponse:
     job = database.create_job(
         db,
         JobCreate(
             task_type=EthemeralTaskType.WRITE_EMAIL, content=email_request.content
         ),
     )
+
+    if email_request.async_mode:
+        background_tasks.add_task(
+            _execute_async_job,
+            db,
+            job.id,
+            EthemeralTaskType.WRITE_EMAIL,
+            email_request.content,
+            email_request.model,
+        )
+        return TaskResponse(
+            job_id=job.id, status=Status.PENDING, created_at=job.created_at
+        )
+
     try:
         result = _run_task(
             EthemeralTaskType.WRITE_EMAIL, email_request.content, email_request.model
         )
         database.update_job_status(db, job.id, Status.COMPLETED, result=result.content)
-        return result
+        return TaskResponse(
+            job_id=job.id,
+            status=Status.COMPLETED,
+            content=result.content,
+            length=result.length,
+            created_at=job.created_at,
+        )
     except Exception:
         database.update_job_status(db, job.id, Status.FAILED)
         raise
@@ -297,8 +422,10 @@ async def write_email(
 
 @app.post("/ask")
 async def ask(
-    ask_request: AskRequest, db: CassandraSession = Depends(get_db)
-) -> SectionResponse:
+    ask_request: AskRequest,
+    background_tasks: BackgroundTasks,
+    db: CassandraSession = Depends(get_db),
+) -> TaskResponse:
     content = ask_request.question
     if ask_request.markdown:
         content = f"{ASK_MARKDOWN_STYLE_HINT}\n\n{content}"
@@ -306,10 +433,30 @@ async def ask(
     job = database.create_job(
         db, JobCreate(task_type=EthemeralTaskType.ASK, content=content)
     )
+
+    if ask_request.async_mode:
+        background_tasks.add_task(
+            _execute_async_job,
+            db,
+            job.id,
+            EthemeralTaskType.ASK,
+            content,
+            ask_request.model,
+        )
+        return TaskResponse(
+            job_id=job.id, status=Status.PENDING, created_at=job.created_at
+        )
+
     try:
         result = _run_task(EthemeralTaskType.ASK, content, ask_request.model)
         database.update_job_status(db, job.id, Status.COMPLETED, result=result.content)
-        return result
+        return TaskResponse(
+            job_id=job.id,
+            status=Status.COMPLETED,
+            content=result.content,
+            length=result.length,
+            created_at=job.created_at,
+        )
     except Exception:
         database.update_job_status(db, job.id, Status.FAILED)
         raise
@@ -317,20 +464,42 @@ async def ask(
 
 @app.post("/summarize")
 async def summarize(
-    summarize_request: SummarizeRequest, db: CassandraSession = Depends(get_db)
-) -> SectionResponse:
+    summarize_request: SummarizeRequest,
+    background_tasks: BackgroundTasks,
+    db: CassandraSession = Depends(get_db),
+) -> TaskResponse:
     content = summarize_request.content
     if summarize_request.max_length is not None:
         content = f"Maximum length: {summarize_request.max_length}\n\n{content}"
     job = database.create_job(
         db, JobCreate(task_type=EthemeralTaskType.SUMMARIZE, content=content)
     )
+
+    if summarize_request.async_mode:
+        background_tasks.add_task(
+            _execute_async_job,
+            db,
+            job.id,
+            EthemeralTaskType.SUMMARIZE,
+            content,
+            summarize_request.model,
+        )
+        return TaskResponse(
+            job_id=job.id, status=Status.PENDING, created_at=job.created_at
+        )
+
     try:
         result = _run_task(
             EthemeralTaskType.SUMMARIZE, content, summarize_request.model
         )
         database.update_job_status(db, job.id, Status.COMPLETED, result=result.content)
-        return result
+        return TaskResponse(
+            job_id=job.id,
+            status=Status.COMPLETED,
+            content=result.content,
+            length=result.length,
+            created_at=job.created_at,
+        )
     except Exception:
         database.update_job_status(db, job.id, Status.FAILED)
         raise
@@ -338,8 +507,10 @@ async def summarize(
 
 @app.post("/translate")
 async def translate(
-    translate_request: TranslateRequest, db: CassandraSession = Depends(get_db)
-) -> SectionResponse:
+    translate_request: TranslateRequest,
+    background_tasks: BackgroundTasks,
+    db: CassandraSession = Depends(get_db),
+) -> TaskResponse:
     metadata = [f"Target language: {translate_request.target_language}"]
     if translate_request.source_language:
         metadata.append(f"Source language: {translate_request.source_language}")
@@ -348,12 +519,32 @@ async def translate(
     job = database.create_job(
         db, JobCreate(task_type=EthemeralTaskType.TRANSLATE, content=content)
     )
+
+    if translate_request.async_mode:
+        background_tasks.add_task(
+            _execute_async_job,
+            db,
+            job.id,
+            EthemeralTaskType.TRANSLATE,
+            content,
+            translate_request.model,
+        )
+        return TaskResponse(
+            job_id=job.id, status=Status.PENDING, created_at=job.created_at
+        )
+
     try:
         result = _run_task(
             EthemeralTaskType.TRANSLATE, content, translate_request.model
         )
         database.update_job_status(db, job.id, Status.COMPLETED, result=result.content)
-        return result
+        return TaskResponse(
+            job_id=job.id,
+            status=Status.COMPLETED,
+            content=result.content,
+            length=result.length,
+            created_at=job.created_at,
+        )
     except Exception:
         database.update_job_status(db, job.id, Status.FAILED)
         raise
@@ -361,20 +552,42 @@ async def translate(
 
 @app.post("/code/explain")
 async def explain_code(
-    explain_code_request: ExplainCodeRequest, db: CassandraSession = Depends(get_db)
-) -> SectionResponse:
+    explain_code_request: ExplainCodeRequest,
+    background_tasks: BackgroundTasks,
+    db: CassandraSession = Depends(get_db),
+) -> TaskResponse:
     content = explain_code_request.content
     if explain_code_request.language:
         content = f"Language: {explain_code_request.language}\n\n{content}"
     job = database.create_job(
         db, JobCreate(task_type=EthemeralTaskType.EXPLAIN_CODE, content=content)
     )
+
+    if explain_code_request.async_mode:
+        background_tasks.add_task(
+            _execute_async_job,
+            db,
+            job.id,
+            EthemeralTaskType.EXPLAIN_CODE,
+            content,
+            explain_code_request.model,
+        )
+        return TaskResponse(
+            job_id=job.id, status=Status.PENDING, created_at=job.created_at
+        )
+
     try:
         result = _run_task(
             EthemeralTaskType.EXPLAIN_CODE, content, explain_code_request.model
         )
         database.update_job_status(db, job.id, Status.COMPLETED, result=result.content)
-        return result
+        return TaskResponse(
+            job_id=job.id,
+            status=Status.COMPLETED,
+            content=result.content,
+            length=result.length,
+            created_at=job.created_at,
+        )
     except Exception:
         database.update_job_status(db, job.id, Status.FAILED)
         raise
@@ -382,8 +595,10 @@ async def explain_code(
 
 @app.post("/git/commit-message")
 async def generate_commit_message(
-    commit_message_request: CommitMessageRequest, db: CassandraSession = Depends(get_db)
-) -> SectionResponse:
+    commit_message_request: CommitMessageRequest,
+    background_tasks: BackgroundTasks,
+    db: CassandraSession = Depends(get_db),
+) -> TaskResponse:
     job = database.create_job(
         db,
         JobCreate(
@@ -391,6 +606,20 @@ async def generate_commit_message(
             content=commit_message_request.content,
         ),
     )
+
+    if commit_message_request.async_mode:
+        background_tasks.add_task(
+            _execute_async_job,
+            db,
+            job.id,
+            EthemeralTaskType.COMMIT_MESSAGE,
+            commit_message_request.content,
+            commit_message_request.model,
+        )
+        return TaskResponse(
+            job_id=job.id, status=Status.PENDING, created_at=job.created_at
+        )
+
     try:
         result = _run_task(
             EthemeralTaskType.COMMIT_MESSAGE,
@@ -398,7 +627,13 @@ async def generate_commit_message(
             commit_message_request.model,
         )
         database.update_job_status(db, job.id, Status.COMPLETED, result=result.content)
-        return result
+        return TaskResponse(
+            job_id=job.id,
+            status=Status.COMPLETED,
+            content=result.content,
+            length=result.length,
+            created_at=job.created_at,
+        )
     except Exception:
         database.update_job_status(db, job.id, Status.FAILED)
         raise
@@ -407,8 +642,9 @@ async def generate_commit_message(
 @app.post("/extract/actions")
 async def extract_actions(
     extract_actions_request: ExtractActionsRequest,
+    background_tasks: BackgroundTasks,
     db: CassandraSession = Depends(get_db),
-) -> SectionResponse:
+) -> TaskResponse:
     job = database.create_job(
         db,
         JobCreate(
@@ -416,6 +652,20 @@ async def extract_actions(
             content=extract_actions_request.content,
         ),
     )
+
+    if extract_actions_request.async_mode:
+        background_tasks.add_task(
+            _execute_async_job,
+            db,
+            job.id,
+            EthemeralTaskType.EXTRACT_ACTIONS,
+            extract_actions_request.content,
+            extract_actions_request.model,
+        )
+        return TaskResponse(
+            job_id=job.id, status=Status.PENDING, created_at=job.created_at
+        )
+
     try:
         result = _run_task(
             EthemeralTaskType.EXTRACT_ACTIONS,
@@ -423,7 +673,13 @@ async def extract_actions(
             extract_actions_request.model,
         )
         database.update_job_status(db, job.id, Status.COMPLETED, result=result.content)
-        return result
+        return TaskResponse(
+            job_id=job.id,
+            status=Status.COMPLETED,
+            content=result.content,
+            length=result.length,
+            created_at=job.created_at,
+        )
     except Exception:
         database.update_job_status(db, job.id, Status.FAILED)
         raise
@@ -431,18 +687,40 @@ async def extract_actions(
 
 @app.post("/rewrite/tone")
 async def rewrite_tone(
-    rewrite_tone_request: RewriteToneRequest, db: CassandraSession = Depends(get_db)
-) -> SectionResponse:
+    rewrite_tone_request: RewriteToneRequest,
+    background_tasks: BackgroundTasks,
+    db: CassandraSession = Depends(get_db),
+) -> TaskResponse:
     content = f"Target tone: {rewrite_tone_request.target_tone}\n\n{rewrite_tone_request.content}"
     job = database.create_job(
         db, JobCreate(task_type=EthemeralTaskType.REWRITE_TONE, content=content)
     )
+
+    if rewrite_tone_request.async_mode:
+        background_tasks.add_task(
+            _execute_async_job,
+            db,
+            job.id,
+            EthemeralTaskType.REWRITE_TONE,
+            content,
+            rewrite_tone_request.model,
+        )
+        return TaskResponse(
+            job_id=job.id, status=Status.PENDING, created_at=job.created_at
+        )
+
     try:
         result = _run_task(
             EthemeralTaskType.REWRITE_TONE, content, rewrite_tone_request.model
         )
         database.update_job_status(db, job.id, Status.COMPLETED, result=result.content)
-        return result
+        return TaskResponse(
+            job_id=job.id,
+            status=Status.COMPLETED,
+            content=result.content,
+            length=result.length,
+            created_at=job.created_at,
+        )
     except Exception:
         database.update_job_status(db, job.id, Status.FAILED)
         raise
@@ -450,14 +728,30 @@ async def rewrite_tone(
 
 @app.post("/proofread")
 async def proofread(
-    proofread_request: ProofreadRequest, db: CassandraSession = Depends(get_db)
-) -> SectionResponse:
+    proofread_request: ProofreadRequest,
+    background_tasks: BackgroundTasks,
+    db: CassandraSession = Depends(get_db),
+) -> TaskResponse:
     job = database.create_job(
         db,
         JobCreate(
             task_type=EthemeralTaskType.PROOFREAD, content=proofread_request.content
         ),
     )
+
+    if proofread_request.async_mode:
+        background_tasks.add_task(
+            _execute_async_job,
+            db,
+            job.id,
+            EthemeralTaskType.PROOFREAD,
+            proofread_request.content,
+            proofread_request.model,
+        )
+        return TaskResponse(
+            job_id=job.id, status=Status.PENDING, created_at=job.created_at
+        )
+
     try:
         result = _run_task(
             EthemeralTaskType.PROOFREAD,
@@ -465,7 +759,13 @@ async def proofread(
             proofread_request.model,
         )
         database.update_job_status(db, job.id, Status.COMPLETED, result=result.content)
-        return result
+        return TaskResponse(
+            job_id=job.id,
+            status=Status.COMPLETED,
+            content=result.content,
+            length=result.length,
+            created_at=job.created_at,
+        )
     except Exception:
         database.update_job_status(db, job.id, Status.FAILED)
         raise
@@ -473,8 +773,10 @@ async def proofread(
 
 @app.post("/code/generate-tests")
 async def generate_tests(
-    generate_tests_request: GenerateTestsRequest, db: CassandraSession = Depends(get_db)
-) -> SectionResponse:
+    generate_tests_request: GenerateTestsRequest,
+    background_tasks: BackgroundTasks,
+    db: CassandraSession = Depends(get_db),
+) -> TaskResponse:
     metadata: list[str] = []
     if generate_tests_request.language:
         metadata.append(f"Language: {generate_tests_request.language}")
@@ -489,12 +791,32 @@ async def generate_tests(
     job = database.create_job(
         db, JobCreate(task_type=EthemeralTaskType.GENERATE_TESTS, content=content)
     )
+
+    if generate_tests_request.async_mode:
+        background_tasks.add_task(
+            _execute_async_job,
+            db,
+            job.id,
+            EthemeralTaskType.GENERATE_TESTS,
+            content,
+            generate_tests_request.model,
+        )
+        return TaskResponse(
+            job_id=job.id, status=Status.PENDING, created_at=job.created_at
+        )
+
     try:
         result = _run_task(
             EthemeralTaskType.GENERATE_TESTS, content, generate_tests_request.model
         )
         database.update_job_status(db, job.id, Status.COMPLETED, result=result.content)
-        return result
+        return TaskResponse(
+            job_id=job.id,
+            status=Status.COMPLETED,
+            content=result.content,
+            length=result.length,
+            created_at=job.created_at,
+        )
     except Exception:
         database.update_job_status(db, job.id, Status.FAILED)
         raise

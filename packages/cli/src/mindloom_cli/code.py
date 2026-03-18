@@ -1,5 +1,5 @@
 import httpx
-from mindloom_core.models import SectionResponse
+from mindloom_core.models import SectionResponse, TaskResponse
 
 
 class CodeRequestError(Exception):
@@ -35,10 +35,13 @@ class Code:
         payload: dict[str, object],
         *,
         error_type: type[CodeRequestError],
-    ) -> SectionResponse:
+    ) -> SectionResponse | TaskResponse:
         response = httpx.post(f"{self.config.host.rstrip('/')}{endpoint}", json=payload, timeout=None)
         if response.status_code == 200:
-            return SectionResponse.model_validate(response.json())
+            data = response.json()
+            if "job_id" in data:
+                return TaskResponse.model_validate(data)
+            return SectionResponse.model_validate(data)
         body = response.text.strip() or "<empty response body>"
         raise error_type(
             status_code=response.status_code,
@@ -50,13 +53,16 @@ class Code:
         content: str,
         language: str | None = None,
         model: str | None = None,
-    ) -> str:
-        payload: dict[str, object] = {"content": content}
+        async_mode: bool = False,
+    ) -> str | int:
+        payload: dict[str, object] = {"content": content, "async_mode": async_mode}
         if language is not None:
             payload["language"] = language
         if model is not None:
             payload["model"] = model
         result = self._request_text_response("/code/explain", payload, error_type=ExplainCodeError)
+        if isinstance(result, TaskResponse):
+            return result.job_id
         return result.content
 
     def generate_tests(
@@ -65,8 +71,9 @@ class Code:
         language: str | None = None,
         framework: str | None = None,
         model: str | None = None,
-    ) -> str:
-        payload: dict[str, object] = {"content": content}
+        async_mode: bool = False,
+    ) -> str | int:
+        payload: dict[str, object] = {"content": content, "async_mode": async_mode}
         if language is not None:
             payload["language"] = language
         if framework is not None:
@@ -76,4 +83,6 @@ class Code:
         result = self._request_text_response(
             "/code/generate-tests", payload, error_type=GenerateTestsError
         )
+        if isinstance(result, TaskResponse):
+            return result.job_id
         return result.content

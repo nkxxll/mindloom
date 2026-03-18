@@ -95,40 +95,35 @@ class BackgroundWorker:
 
         This is the main worker logic executed on each poll cycle.
         """
-        db = None
-        try:
-            db = get_session()
+        db = get_session()
 
-            # Query for jobs waiting for dependencies
-            rows = db.execute(
-                f"""
-                SELECT id, task_type, content, result, status, created_at, updated_at, dependencies
-                FROM {SETTINGS.table}
-                WHERE status = %s
-                ALLOW FILTERING
-                """,
-                (Status.WAITING_FOR.value,),
-            )
+        # Query for jobs waiting for dependencies
+        rows = db.execute(
+            f"""
+            SELECT id, task_type, content, result, status, created_at, updated_at, dependencies
+            FROM {SETTINGS.table}
+            WHERE status = %s
+            ALLOW FILTERING
+            """,
+            (Status.WAITING_FOR.value,),
+        )
 
-            waiting_jobs = [self._row_to_job(row) for row in rows]
+        waiting_jobs = [self._row_to_job(row) for row in rows]
 
-            if not waiting_jobs:
-                logger.debug("No jobs waiting for dependencies")
-                return
+        if not waiting_jobs:
+            logger.debug("No jobs waiting for dependencies")
+            return
 
-            logger.info("Found %d jobs waiting for dependencies", len(waiting_jobs))
+        logger.info("Found %d jobs waiting for dependencies", len(waiting_jobs))
 
-            # Process each waiting job
-            for job in waiting_jobs:
-                try:
-                    self._process_waiting_job(db, job)
-                except Exception as e:
-                    logger.error(
-                        "Error processing job %d: %s", job.id, e, exc_info=True
-                    )
-        finally:
-            if db:
-                db.shutdown()
+        # Process each waiting job
+        for job in waiting_jobs:
+            try:
+                self._process_waiting_job(db, job)
+            except Exception as e:
+                logger.error(
+                    "Error processing job %d: %s", job.id, e, exc_info=True
+                )
 
     def _row_to_job(self, row: dict) -> Job:
         """Convert database row to Job object."""

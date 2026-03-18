@@ -11,9 +11,9 @@ import threading
 from typing import Callable, Optional
 
 from cassandra.cluster import Session as CassandraSession
+from mindloom_core.models import Job, Status
 
 from .db import SETTINGS, WORKER_SETTINGS, get_session
-from .models import Job, Status
 from .template_parser import replace_templates
 
 logger = logging.getLogger(__name__)
@@ -121,9 +121,7 @@ class BackgroundWorker:
             try:
                 self._process_waiting_job(db, job)
             except Exception as e:
-                logger.error(
-                    "Error processing job %d: %s", job.id, e, exc_info=True
-                )
+                logger.error("Error processing job %d: %s", job.id, e, exc_info=True)
 
     def _row_to_job(self, row: dict) -> Job:
         """Convert database row to Job object."""

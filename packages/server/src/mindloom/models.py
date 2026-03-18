@@ -1,29 +1,10 @@
 from __future__ import annotations
 
-from pydantic import BaseModel
-
 from mindloom_core.models import (  # noqa: F401 — re-exported for backwards compat
-    AskRequest,
-    CommitMessageRequest,
     ConversationTaskType,
-    EmailRequest,
     EthemeralTaskType,
-    ExplainCodeRequest,
-    ExtractActionsRequest,
-    FileRequest,
-    GenerateTestsRequest,
-    Job,
-    JobCreate,
-    JobResponse,
-    Model,
-    ProofreadRequest,
-    RewriteToneRequest,
-    SectionRequest,
-    SectionResponse,
-    Status,
-    SummarizeRequest,
-    TranslateRequest,
 )
+from pydantic import BaseModel
 
 
 class Prompts(BaseModel):
@@ -57,8 +38,12 @@ class Prompts(BaseModel):
         "Use a professional subject line and a structured body."
     )
 
-    summarize: str = "Summarize the following text concisely, preserving all key points."
-    translate: str = "Translate the following text accurately, preserving tone and meaning."
+    summarize: str = (
+        "Summarize the following text concisely, preserving all key points."
+    )
+    translate: str = (
+        "Translate the following text accurately, preserving tone and meaning."
+    )
     explain_code: str = (
         "Explain the following code in plain English. Describe what it does, "
         "why, and any notable patterns or pitfalls."

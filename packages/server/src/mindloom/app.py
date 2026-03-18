@@ -4,10 +4,7 @@ from contextlib import asynccontextmanager
 from cassandra.cluster import Session as CassandraSession
 from fastapi import BackgroundTasks, Depends, FastAPI, Response, status
 from fastapi.exceptions import HTTPException
-
-from . import db as database
-from .db import WORKER_SETTINGS
-from .models import (
+from mindloom_core.models import (
     AskRequest,
     CommitMessageRequest,
     EmailRequest,
@@ -26,6 +23,11 @@ from .models import (
     SummarizeRequest,
     TaskResponse,
     TranslateRequest,
+)
+
+from . import db as database
+from .db import WORKER_SETTINGS
+from .models import (
     get_system_message,
     get_user_message,
 )

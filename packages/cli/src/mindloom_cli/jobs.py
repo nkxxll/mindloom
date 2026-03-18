@@ -47,7 +47,10 @@ class Jobs:
     ) -> JobResponse:
         if response.status_code == 200:
             return JobResponse.model_validate(response.json())
-        raise error_type(status_code=response.status_code, message=error_message)
+        raise error_type(
+            status_code=response.status_code,
+            message=error_message + f" Code was {response.status_code}",
+        )
 
     def get_jobs(self) -> list[JobResponse]:
         response = httpx.get(f"{self.config.host}/jobs", timeout=None)

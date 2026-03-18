@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import ParamSpec, TypeVar
 
 import click
+import httpx
 from rich.console import Console
 
 from mindloom_cli.config import get_config, initialize_config
@@ -19,14 +20,26 @@ P = ParamSpec("P")
 T = TypeVar("T")
 
 
+class StyledError(click.ClickException):
+    def show(self, file=None):
+        if file is None:
+            file = sys.stderr
+        click.secho(f"💥 Error: {self.format_message()}", fg="red", bold=True, err=True)
+
+
 def with_response_spinner(
     operation: Callable[P, T], /, *args: P.args, **kwargs: P.kwargs
 ) -> T:
-    if not sys.stderr.isatty():
-        return operation(*args, **kwargs)
+    try:
+        if not sys.stderr.isatty():
+            return operation(*args, **kwargs)
 
-    with _SPINNER_CONSOLE.status(_REQUEST_WAIT_MESSAGE, spinner=_BRAILLE_SPINNER):
-        return operation(*args, **kwargs)
+        with _SPINNER_CONSOLE.status(_REQUEST_WAIT_MESSAGE, spinner=_BRAILLE_SPINNER):
+            return operation(*args, **kwargs)
+    except httpx.ConnectError:
+        raise StyledError(
+            f"Could not connect to the server at {cfg.host}. Is it running?"
+        )
 
 
 class DefaultCommandGroup(click.Group):
@@ -123,12 +136,15 @@ def jobs(ctx: click.Context, id: int | None):
     if ctx.invoked_subcommand is not None:
         return
 
-    from mindloom_cli.jobs import Jobs
+    from mindloom_cli.jobs import GetJobByIdError, Jobs
 
     j = Jobs(cfg)
     if id is not None:
-        job = with_response_spinner(j.get_job_by_id, id)
-        render_jobs_table([job], title=f"Job {id}")
+        try:
+            job = with_response_spinner(j.get_job_by_id, id)
+            render_jobs_table([job], title=f"Job {id}")
+        except GetJobByIdError as e:
+            raise StyledError(f"Job {id} not found (status code: {e.status_code})")
     else:
         jobs = with_response_spinner(j.get_jobs)
         render_jobs_table(jobs)
@@ -137,11 +153,14 @@ def jobs(ctx: click.Context, id: int | None):
 @cli.command()
 @click.argument("id", type=click.INT)
 def restart(id: int):
-    from mindloom_cli.jobs import Jobs
+    from mindloom_cli.jobs import Jobs, RestartJobError
 
     j = Jobs(cfg)
-    job = with_response_spinner(j.restart_by_id, id)
-    render_jobs_table([job], title=f"Restarted Job {id}")
+    try:
+        job = with_response_spinner(j.restart_by_id, id)
+        render_jobs_table([job], title=f"Restarted Job {id}")
+    except RestartJobError as e:
+        raise StyledError(f"Failed to restart job {id}: {e.message}")
 
 
 @cli.group()
@@ -199,7 +218,7 @@ def section_improve(file_path: Path, line_range: str | None, model: str | None):
 
     lines = content.splitlines(keepends=True)
     if not lines:
-        raise click.ClickException(
+        raise StyledError(
             f"{file_path} is empty; nothing to improve in a range."
         )
 
@@ -235,7 +254,7 @@ def section_extend(file_path: Path, line_range: str | None, model: str | None):
     content = read_file(file_path)
     lines = content.splitlines(keepends=True)
     if not lines:
-        raise click.ClickException(f"{file_path} is empty; nothing to extend.")
+        raise StyledError(f"{file_path} is empty; nothing to extend.")
 
     if line_range is None:
         start, end = 1, len(lines)
